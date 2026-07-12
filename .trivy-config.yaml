@@ -1,0 +1,9 @@
+---
+db:
+  repository:
+    - ghcr.io/aquasecurity/trivy-db:2
+  java-repository:
+    - ghcr.io/aquasecurity/trivy-java-db:1
+misconfiguration:
+  checks-bundle-repository:
+    - ghcr.io/aquasecurity/trivy-checks:1
