@@ -72,7 +72,7 @@ llm:
     verify: true
     timeout: 11 # Request timeout in seconds
     api_url: ${LLM_API_URL} # Base URL of the provider API
-    api_token: ${LLM_API_TOKEN} # API token (set in env/CI variables)
+    api_token: ${LLM_API_KEY} # API token (set in env/CI variables)
     max_retries_time: 222
 
     # --- Proxy ---

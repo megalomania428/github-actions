@@ -1,0 +1,65 @@
+---
+name: Opencode Review
+description: Run the opencode review container against a pull request
+branding:
+  icon: git-pull-request
+  color: purple
+inputs:
+  llm_api_model:
+    description: Model name exposed by the review provider
+    required: true
+  llm_api_url:
+    description: Base URL of the OpenAI-compatible LLM API
+    required: true
+  llm_api_key:
+    description: API key for the LLM API
+    required: true
+  github_token:
+    description: GitHub token used by the github MCP and PR lookup
+    required: true
+  search_mcp_url:
+    description: URL of the remote search MCP
+    required: false
+    default: dummy
+  search_mcp_key:
+    description: Bearer key for the remote search MCP
+    required: false
+    default: dummy
+  fetch_mcp_url:
+    description: URL of the remote fetch MCP
+    required: false
+    default: dummy
+  fetch_mcp_key:
+    description: Bearer key for the remote fetch MCP
+    required: false
+    default: dummy
+  pr_number:
+    description: Pull request number to review (resolved from the branch if empty)
+    required: false
+    default: ""
+  image:
+    description: Opencode review container image
+    required: false
+    default: ghcr.io/raven428/container-images/opencode-debian13:latest
+runs:
+  using: composite
+  steps:
+    - name: Run opencode review
+      shell: bash
+      run: "${{ github.action_path }}/launch.sh"
+      env:
+        LLM_API_MODEL: ${{ inputs.llm_api_model }}
+        LLM_API_URL: ${{ inputs.llm_api_url }}
+        LLM_API_KEY: ${{ inputs.llm_api_key }}
+        GITHUB_TOKEN: ${{ inputs.github_token }}
+        GH_TOKEN: ${{ inputs.github_token }}
+        SEARCH_MCP_URL: ${{ inputs.search_mcp_url }}
+        SEARCH_MCP_KEY: ${{ inputs.search_mcp_key }}
+        FETCH_MCP_URL: ${{ inputs.fetch_mcp_url }}
+        FETCH_MCP_KEY: ${{ inputs.fetch_mcp_key }}
+        PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+        IMAGE: ${{ inputs.image }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_REPOSITORY: ${{ github.repository }}
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}

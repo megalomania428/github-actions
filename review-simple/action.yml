@@ -1,0 +1,86 @@
+---
+name: AI Review
+description: Run the ai-review container against a pull request
+branding:
+  icon: git-pull-request
+  color: purple
+inputs:
+  llm_api_url:
+    description: Base URL of the OpenAI-compatible LLM API
+    required: false
+    default: ""
+  llm_api_type:
+    description: Provider type for the LLM API
+    required: false
+    default: OPENAI
+  llm_api_model:
+    description: Model name exposed by the review provider
+    required: false
+    default: co-glm
+  llm_api_key:
+    description: API key for the LLM API
+    required: false
+    default: dummy
+  github_token:
+    description: GitHub token used by the review and PR lookup
+    required: true
+  pr_number:
+    description: Pull request number to review (resolved from the branch if empty)
+    required: false
+    default: ""
+  run:
+    description: run — full review (inline + summary)
+    required: false
+    default: "false"
+  run_inline:
+    description: run-inline — inline code review comments
+    required: false
+    default: "false"
+  run_context:
+    description: run-context — context review
+    required: false
+    default: "false"
+  run_summary:
+    description: run-summary — summary review
+    required: false
+    default: "false"
+  run_inline_reply:
+    description: run-inline-reply — reply to inline comments
+    required: false
+    default: "false"
+  run_summary_reply:
+    description: run-summary-reply — reply to summary comments
+    required: false
+    default: "false"
+  clear_inline:
+    description: clear-inline — remove AI inline comments
+    required: false
+    default: "false"
+  clear_summary:
+    description: clear-summary — remove AI summary comments
+    required: false
+    default: "false"
+runs:
+  using: composite
+  steps:
+    - name: Run AI review
+      shell: bash
+      run: "${{ github.action_path }}/launch.sh"
+      env:
+        GH_TOKEN: ${{ inputs.github_token }}
+        PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
+        LLM_API_URL: ${{ inputs.llm_api_url }}
+        LLM_API_TYPE: ${{ inputs.llm_api_type }}
+        LLM_API_KEY: ${{ inputs.llm_api_key }}
+        LLM_API_MODEL: ${{ inputs.llm_api_model }}
+        CMD_RUN: ${{ inputs.run }}
+        CMD_RUN_INLINE: ${{ inputs.run_inline }}
+        CMD_RUN_CONTEXT: ${{ inputs.run_context }}
+        CMD_RUN_SUMMARY: ${{ inputs.run_summary }}
+        CMD_RUN_INLINE_REPLY: ${{ inputs.run_inline_reply }}
+        CMD_RUN_SUMMARY_REPLY: ${{ inputs.run_summary_reply }}
+        CMD_CLEAR_INLINE: ${{ inputs.clear_inline }}
+        CMD_CLEAR_SUMMARY: ${{ inputs.clear_summary }}
+        GITHUB_API_URL: ${{ github.api_url }}
+        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
+        GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}

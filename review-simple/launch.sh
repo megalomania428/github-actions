@@ -1,13 +1,25 @@
 #!/usr/bin/env bash
 set -euo pipefail
+# cspell:ignore abrt
 export LLM_API_URL="${LLM_API_URL:-dummy}"
 export LLM_API_TYPE="${LLM_API_TYPE:-dummy}"
-export LLM_API_TOKEN="${LLM_API_TOKEN:-dummy}"
+export LLM_API_KEY="${LLM_API_KEY:-dummy}"
 export LLM_API_MODEL="${LLM_API_MODEL:-dummy}"
 export GITHUB_API_URL="${GITHUB_API_URL:-dummy}"
 export GITHUB_REPOSITORY_NAME="${GITHUB_REPOSITORY_NAME:-dummy}"
 export GITHUB_REPOSITORY_OWNER="${GITHUB_REPOSITORY_OWNER:-dummy}"
 export GH_TOKEN="${GH_TOKEN:-dummy}"
+# Locate the review config: prefer the file provided by the reviewed repository,
+# otherwise fall back to the default shipped with this action.
+action_dir="${GITHUB_ACTION_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
+config_tpl='.github/review-simple.yaml'
+[[ -f "${config_tpl}" ]] || config_tpl="${action_dir}/config.yaml"
+# Create a private workspace and always clean it up, even on signals.
+TMP="$(mktemp -d -t review-simple-XXXXXX)"
+trap 'rm -rf "${TMP}"' INT QUIT ABRT TERM EXIT
+cp "${config_tpl}" "${TMP}/config.yaml"
+config_dst=/tmp/review-simple.yaml
+export AI_REVIEW_CONFIG_FILE_YAML="${config_dst}"
 # Resolve pull request number when the event context does not provide one
 # (e.g. workflow_dispatch triggered from a feature branch). Looks up an open PR
 # whose head branch matches the current ref via the GitHub REST API.
@@ -21,9 +33,10 @@ ${GITHUB_REPOSITORY_NAME}/pulls?head=${GITHUB_REPOSITORY_OWNER}:${GITHUB_REF_NAM
 fi
 launcher=(
   /usr/bin/env podman run --rm --network=host -e GITHUB_ACTIONS -e GH_TOKEN -e PR_NUMBER
-  -e LLM_API_TOKEN -e LLM_API_MODEL -e GITHUB_API_URL -e LLM_API_URL -e LLM_API_TYPE
+  -e LLM_API_KEY -e LLM_API_MODEL -e GITHUB_API_URL -e LLM_API_URL -e LLM_API_TYPE
   -e GITHUB_REPOSITORY_NAME -e GITHUB_REPOSITORY_OWNER -e AI_REVIEW_CONFIG_FILE_YAML
-  -v "$(pwd):/tmp/review" --name="ai-review-${GITHUB_RUN_ID}" -w /tmp/review
+  -v "$(pwd):/tmp/review" -v "${TMP}/config.yaml:${config_dst}:ro"
+  --name="ai-review-${GITHUB_RUN_ID:-$$}-${RANDOM}" -w /tmp/review
   ghcr.io/raven428/container-images/ai-review:latest
 )
 # When called via workflow_call a single REVIEW_COMMAND is passed; otherwise

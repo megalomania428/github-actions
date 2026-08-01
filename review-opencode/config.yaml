@@ -1,0 +1,54 @@
+---
+# Config template for the opencode review container.
+# Placeholders "env<NAME>" are replaced by the value of the "<NAME>" environment
+# variable in launch.sh before the file is converted to JSON.
+# cspell:ignore githubcopilot
+share: manual
+permission: allow
+$schema: https://opencode.ai/config.json
+model: review/envLLM_API_MODEL
+instructions:
+  - .github/copilot-instructions.md
+provider:
+  review:
+    name: review
+    npm: "@ai-sdk/openai-compatible"
+    models:
+      envLLM_API_MODEL:
+        reasoning: true
+        tool_call: true
+        limit:
+          output: 131072
+          context: 200000
+    options:
+      baseURL: envLLM_API_URL
+      apiKey: envLLM_API_KEY
+mcp:
+  github:
+    type: remote
+    url: https://api.githubcopilot.com/mcp/
+    enabled: true
+    oauth: false
+    headers:
+      Authorization: Bearer envGITHUB_TOKEN
+  search:
+    type: remote
+    url: envSEARCH_MCP_URL
+    headers:
+      Authorization: Bearer envSEARCH_MCP_KEY
+    enabled: true
+  fetch:
+    type: remote
+    url: envFETCH_MCP_URL
+    headers:
+      Authorization: Bearer envFETCH_MCP_KEY
+    enabled: true
+#  other-mcp:
+#    type: remote
+#    url: OTHER_MCP_URL
+#    headers:
+#      Authorization: Bearer OTHER_MCP_KEY
+#    enabled: true
+compaction:
+  auto: true
+  prune: false
