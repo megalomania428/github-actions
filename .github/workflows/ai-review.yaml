@@ -67,12 +67,14 @@ jobs:
         # jscpd:ignore-end
         uses: megalomania428/github-actions/review-simple@master
         with:
+          # jscpd:ignore-start
           llm_api_url: ${{ inputs.llm-api-url || secrets.LLM_API_URL }}
           llm_api_model: ${{ inputs.llm-api-model || secrets.LLM_API_MODEL ||
             'co-reviewer' }}
           llm_api_key: "${{ inputs.llm-api-token ||
             !inputs.llm-api-url && secrets.LLM_API_KEY || 'dummy' }}"
           github_token: ${{ secrets.GITHUB_TOKEN }}
+          # jscpd:ignore-end
           llm_api_type: ${{ inputs.llm-api-type || 'OPENAI' }}
           run: ${{ inputs.run }}
           run_inline: ${{ inputs.run-inline }}
