@@ -17,6 +17,25 @@ export GITHUB_API_URL="${GITHUB_API_URL:-https://api.github.com}"
 export GITHUB_REPOSITORY_OWNER="${GITHUB_REPOSITORY_OWNER:-dummy}"
 export GITHUB_REPOSITORY_NAME="${GITHUB_REPOSITORY_NAME:-dummy}"
 IMAGE="${IMAGE:-ghcr.io/raven428/container-images/opencode-debian13:latest}"
+# jscpd:ignore-start
+# Export a proxy variable only when it has a value, so an unset/empty proxy
+# never overwrites what podman would otherwise leave untouched in the container.
+maybe_export() {
+  local name=$1 value=$2
+  [[ -z "${value}" ]] && return 0
+  export "${name}=${value}"
+}
+maybe_export HTTP_PROXY "${HTTP_PROXY:-${http_proxy:-}}"
+maybe_export http_proxy "${http_proxy:-${HTTP_PROXY:-}}"
+maybe_export HTTPS_PROXY "${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-}}}"
+maybe_export https_proxy "${https_proxy:-${HTTPS_PROXY:-${HTTP_PROXY:-}}}"
+maybe_export SOCKS_PROXY "${SOCKS_PROXY:-${socks_proxy:-}}"
+maybe_export socks_proxy "${socks_proxy:-${SOCKS_PROXY:-}}"
+maybe_export ALL_PROXY "${ALL_PROXY:-${all_proxy:-${SOCKS_PROXY:-}}}"
+maybe_export all_proxy "${all_proxy:-${ALL_PROXY:-${SOCKS_PROXY:-}}}"
+maybe_export NO_PROXY "${NO_PROXY:-${no_proxy:-}}"
+maybe_export no_proxy "${no_proxy:-${NO_PROXY:-}}"
+# jscpd:ignore-end
 # Resolve the repository name from GITHUB_REPOSITORY (owner/name) when needed.
 if [[ "${GITHUB_REPOSITORY_NAME}" == 'dummy' && -n "${GITHUB_REPOSITORY:-}" ]]; then
   GITHUB_REPOSITORY_OWNER="${GITHUB_REPOSITORY%%/*}"
@@ -67,11 +86,13 @@ cp "${prompt_tpl}" "${TMP}/CLAUDE.md"
 message="Review pull request #${PR_NUMBER} in repository \
 ${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY_NAME}. Use the github MCP tools to \
 read the pull request diff and existing comments and to publish your findings."
-# Secrets are baked into opencode.json, so no environment is forwarded into the
-# container. The repository is mounted so relative instruction paths resolve.
+# Secrets are baked into opencode.json, so only the proxy variables are forwarded
+# into the container. The repository is mounted so relative instruction paths resolve.
 # Redirect stderr to stdout ("2>&1") so container error output shows up in the CI
 # log alongside stdout.
 podman run --rm --network=host -v "$(pwd):/workspace/repo" -w /workspace/repo \
+  -e all_proxy -e ALL_PROXY -e HTTP_PROXY -e HTTPS_PROXY -e http_proxy -e https_proxy \
+  -e SOCKS_PROXY -e socks_proxy -e NO_PROXY -e no_proxy \
   -v "${TMP}/CLAUDE.md:/home/coder/.claude/CLAUDE.md:ro" \
   -v "${TMP}/opencode.json:/home/coder/.config/opencode/opencode.json:ro" \
   --name "review-opencode-${GITHUB_RUN_ID:-$$}-${RANDOM}" "${IMAGE}" opencode run \

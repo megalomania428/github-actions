@@ -9,6 +9,26 @@ export GITHUB_API_URL="${GITHUB_API_URL:-dummy}"
 export GITHUB_REPOSITORY_NAME="${GITHUB_REPOSITORY_NAME:-dummy}"
 export GITHUB_REPOSITORY_OWNER="${GITHUB_REPOSITORY_OWNER:-dummy}"
 export GH_TOKEN="${GH_TOKEN:-dummy}"
+IMAGE="${IMAGE:-ghcr.io/raven428/container-images/ai-review:latest}"
+# jscpd:ignore-start
+# Export a proxy variable only when it has a value, so an unset/empty proxy
+# never overwrites what podman would otherwise leave untouched in the container.
+maybe_export() {
+  local name=$1 value=$2
+  [[ -z "${value}" ]] && return 0
+  export "${name}=${value}"
+}
+maybe_export HTTP_PROXY "${HTTP_PROXY:-${http_proxy:-}}"
+maybe_export http_proxy "${http_proxy:-${HTTP_PROXY:-}}"
+maybe_export HTTPS_PROXY "${HTTPS_PROXY:-${https_proxy:-${HTTP_PROXY:-}}}"
+maybe_export https_proxy "${https_proxy:-${HTTPS_PROXY:-${HTTP_PROXY:-}}}"
+maybe_export SOCKS_PROXY "${SOCKS_PROXY:-${socks_proxy:-}}"
+maybe_export socks_proxy "${socks_proxy:-${SOCKS_PROXY:-}}"
+maybe_export ALL_PROXY "${ALL_PROXY:-${all_proxy:-${SOCKS_PROXY:-}}}"
+maybe_export all_proxy "${all_proxy:-${ALL_PROXY:-${SOCKS_PROXY:-}}}"
+maybe_export NO_PROXY "${NO_PROXY:-${no_proxy:-}}"
+maybe_export no_proxy "${no_proxy:-${NO_PROXY:-}}"
+# jscpd:ignore-end
 # Locate the review config: prefer the file provided by the reviewed repository,
 # otherwise fall back to the default shipped with this action.
 action_dir="${GITHUB_ACTION_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
@@ -35,9 +55,10 @@ launcher=(
   /usr/bin/env podman run --rm --network=host -e GITHUB_ACTIONS -e GH_TOKEN -e PR_NUMBER
   -e LLM_API_KEY -e LLM_API_MODEL -e GITHUB_API_URL -e LLM_API_URL -e LLM_API_TYPE
   -e GITHUB_REPOSITORY_NAME -e GITHUB_REPOSITORY_OWNER -e AI_REVIEW_CONFIG_FILE_YAML
+  -e all_proxy -e ALL_PROXY -e HTTP_PROXY -e HTTPS_PROXY -e http_proxy -e https_proxy
+  -e SOCKS_PROXY -e socks_proxy -e NO_PROXY -e no_proxy
   -v "$(pwd):/tmp/review" -v "${TMP}/config.yaml:${config_dst}:ro"
-  --name="ai-review-${GITHUB_RUN_ID:-$$}-${RANDOM}" -w /tmp/review
-  ghcr.io/raven428/container-images/ai-review:latest
+  --name="ai-review-${GITHUB_RUN_ID:-$$}-${RANDOM}" -w /tmp/review "${IMAGE}"
 )
 # When called via workflow_call a single REVIEW_COMMAND is passed; otherwise
 # build the list from the boolean flags selected in the workflow_dispatch UI.
