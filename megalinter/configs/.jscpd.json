@@ -1,5 +1,5 @@
 {
   "threshold": 0,
   "reporters": ["html", "markdown"],
-  "ignore": ["megalinter/configs/*"]
+  "ignore": ["**/*_test.go"]
 }

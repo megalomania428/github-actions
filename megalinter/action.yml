@@ -1,0 +1,31 @@
+---
+name: MegaLinter
+description: Run MegaLinter with shared default configs and per-repo overrides
+branding:
+  icon: check-circle
+  color: purple
+inputs:
+  override_dir:
+    description: Optional dir with per-repo overrides copied over defaults first
+    required: false
+    default: ".megalinter"
+  megalinter_image:
+    description: Full MegaLinter image reference including the tag or digest
+    required: false
+    default: oxsecurity/megalinter:v9
+runs:
+  using: composite
+  steps:
+    - name: Prepare shared MegaLinter configs
+      shell: bash
+      env:
+        OVERRIDE_DIR: ${{ inputs.override_dir }}
+      run: "${{ github.action_path }}/launch.sh prepare"
+    - name: Run MegaLinter
+      uses: oxsecurity/megalinter@v9
+      env:
+        DEFAULT_WORKSPACE: ${{ github.workspace }}
+    - name: Cleanup shared MegaLinter configs
+      if: always()
+      shell: bash
+      run: "${{ github.action_path }}/launch.sh cleanup"
