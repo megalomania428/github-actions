@@ -1,3 +1,4 @@
 /deps/
 *.pyc
 __pycache__/
+go-lib

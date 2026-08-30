@@ -24,19 +24,19 @@ EDITORCONFIG_EDITORCONFIG_CHECKER_CLI_EXECUTABLE:
   - /ec-custom.sh
 EDITORCONFIG_EDITORCONFIG_CHECKER_PRE_COMMANDS:
   - command: |
-      cat <<EOF > /ec-custom.sh
+      cat <<'EOF' > /ec-custom.sh
       #!/usr/bin/env bash
-      editorconfig-checker \$@
-      rc=\$?
+      editorconfig-checker "$@"
+      rc=$?
       # check for multiple empty lines at EOF
-      for file in \$@; do
-        tail_lines=\$(tail -n 2 -- "\$file" | grep -c '^$')
-        if [ "\$tail_lines" -gt 1 ]; then
-          echo "File [\$file] has multiple trailing lines"
+      for file in "$@"; do
+        tail_lines=$(tail -n 2 -- "$file" | grep -c '^$')
+        if [ "$tail_lines" -gt 1 ]; then
+          echo "File [$file] has multiple trailing lines"
           rc=1
         fi
       done
-      exit \$rc
+      exit $rc
       EOF
       chmod -v 755 /ec-custom.sh
     cwd: workspace
@@ -48,8 +48,12 @@ REPOSITORY_TRIVY_ARGUMENTS:
 REPOSITORY_DEVSKIM_ARGUMENTS:
   - "-f"
   - "text"
-  # - "--ignore-rule-ids"
-  # - "DS162092,DS126858"
+MULTI_STATUS: false
+GITHUB_STATUS_REPORTER: false
+GITHUB_COMMENT_REPORTER: false
+GITLAB_COMMENT_REPORTER: false
+ACTION_ACTIONLINT_CONFIG_FILE: ".actionlint.yaml"
+REPOSITORY_KINGFISHER_ARGUMENTS: "--exclude .git"
 ANSIBLE_ANSIBLE_LINT_ARGUMENTS: "-f pep8 --force-color"
 ANSIBLE_ANSIBLE_LINT_CONFIG_FILE: ".ansible-lint.yml"
 ANSIBLE_ANSIBLE_LINT_COMMAND_REMOVE_ARGUMENTS: "-v"
@@ -57,14 +61,6 @@ ANSIBLE_ANSIBLE_LINT_POST_COMMANDS:
   - command: "rm -rfv .ansible"
     cwd: workspace
     continue_if_failed: true
-REPOSITORY_KINGFISHER_ARGUMENTS: "--exclude .git"
-
-REPOSITORY_TRUFFLEHOG_ARGUMENTS: "--exclude-detectors=TelegramBotToken"
-MULTI_STATUS: false
-GITHUB_STATUS_REPORTER: false
-GITHUB_COMMENT_REPORTER: false
-GITLAB_COMMENT_REPORTER: false
-ACTION_ACTIONLINT_CONFIG_FILE: ".actionlint.yaml"
 ANSIBLE_ANSIBLE_LINT_PRE_COMMANDS:
   - command: |
       which ansible ansible-lint
@@ -73,10 +69,6 @@ ANSIBLE_ANSIBLE_LINT_PRE_COMMANDS:
       /venvs/ansible-lint/bin/pip install pytest PyYAML ansible-core==$VER jinja2 \
       freezegun 'pulumi>=3.0.0,<4.0.0' 'pulumi-vault>=7.0.0'
     cwd: root
-  - command: |
-      source /venvs/ansible-lint/bin/activate
-      ansible-galaxy collection install -r ansible/collections/requirements.yml
-    cwd: workspace
 PYTHON_PYLINT_PRE_COMMANDS:
   - command: |
       which ansible pylint
@@ -98,7 +90,7 @@ PYTHON_MYPY_PRE_COMMANDS:
   - command: |
       which ansible mypy
       source /venvs/ansible-lint/bin/activate
-      VER="$(python3 -c "import ansible; print(ansible.__version__)")"
+      VER="$(python3 -c 'import ansible; print(ansible.__version__)')"
       /venvs/mypy/bin/pip install pytest PyYAML ansible-core==$VER jinja2 freezegun \
       'pulumi>=3.0.0,<4.0.0' 'pulumi-vault>=7.0.0'
     cwd: root
@@ -106,29 +98,30 @@ GO_GOLANGCI_LINT_CLI_EXECUTABLE:
   - /gl-ci-custom.sh
 GO_GOLANGCI_LINT_PRE_COMMANDS:
   - command: |
-      dir_list='golang'
-      cat <<EOF > /gl-ci-custom.sh
+      cat <<'EOF' > /gl-ci-custom.sh
       #!/usr/bin/env bash
-      [[ \$1 = "version" ]] && {
-        golangci-lint \$@
-        exit \$?
+      [[ $1 = "version" ]] && {
+        golangci-lint "$@"
+        exit $?
       }
-      go env -w GOTOOLCHAIN=auto
-      workspace='${PWD}'
       rc=0
+      dir_list='golang'
+      workspace="${PWD}"
+      go env -w GOTOOLCHAIN=auto
       for d in ${dir_list}; do
-        cd "\${workspace}/\${d}"
-        golangci-lint \$@ || rc=\$((rc + 1))
+        cd "${workspace}/${d}"
+        go mod download
+        golangci-lint "$@" || rc=1
       done
-      exit \$rc
+      exit $rc
       EOF
       chmod -v 755 /gl-ci-custom.sh
     cwd: workspace
     continue_if_failed: true
-ACTION_ZIZMOR_UNSECURED_ENV_VARIABLES:
-  - GITHUB_TOKEN
-ACTION_ZIZMOR_CONFIG_FILE: ".zizmor.yaml"
 SPELL_CSPELL_PRE_COMMANDS:
   - command: "npm install --prefix /node-deps @cspell/dict-ru_ru
       @cspell/dict-software-terms"
     cwd: root
+ACTION_ZIZMOR_UNSECURED_ENV_VARIABLES:
+  - GITHUB_TOKEN
+ACTION_ZIZMOR_CONFIG_FILE: ".zizmor.yaml"
