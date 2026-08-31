@@ -1,13 +1,7 @@
 {
   "version": "0.2",
   "language": "en,ru",
-  "words": [
-    "lycheeignore",
-    "opencode",
-    "opeview",
-    "pylintrc",
-    "zizmor"
-  ],
+  "words": ["lycheeignore", "opencode", "opeview", "pylintrc", "zizmor"],
   "dictionaryDefinitions": [
     {
       "name": "ru-ru",
