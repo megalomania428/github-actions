@@ -55,7 +55,7 @@ jobs:
           submodules: true
           persist-credentials: false
       - name: Run MegaLinter
-        uses: megalomania428/github-actions/megalinter@updates-003
+        uses: megalomania428/github-actions/megalinter@master
   all-green:
     name: all green
     timeout-minutes: 5
