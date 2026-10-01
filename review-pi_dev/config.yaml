@@ -1,0 +1,62 @@
+---
+# Config template for the pi review container. The "settings", "models" and "mcp"
+# sections become settings.json, models.json and mcp.json of the pi agent directory.
+# Placeholders "env<NAME>" are replaced by the value of the "<NAME>" environment
+# variable in launch.sh, and a value equal to "json<NAME>" is replaced by the value
+# of "<NAME>" parsed as JSON, which keeps booleans and numbers typed.
+# cspell:ignore githubcopilot
+settings:
+  packages:
+    - npm:pi-mcp-adapter
+  quietStartup: true
+  enableAnalytics: false
+  collapseChangelog: true
+  enableInstallTelemetry: false
+  lastChangelogVersion: "0.85.1"
+  defaultProvider: omni
+  defaultModel: envLLM_MDL_NAME
+  defaultThinkingLevel: envLLM_MDL_LVL
+  theme: dark
+  hideThinkingBlock: false
+  warnings:
+    anthropicExtraUsage: false
+models:
+  providers:
+    omni:
+      baseUrl: envLLM_MDL_URL
+      api: envLLM_MDL_API
+      apiKey: envLLM_MDL_KEY
+      compat:
+        supportsReasoningEffort: jsonLLM_MDL_EFF
+      models:
+        - id: envLLM_MDL_NAME
+          reasoning: jsonLLM_MDL_RSN
+          contextWindow: jsonLLM_MDL_CTX
+          maxTokens: jsonLLM_MDL_MAX
+          thinkingLevelMap:
+            low: low
+            medium: medium
+            high: high
+            xhigh: xhigh
+            max: max
+mcp:
+  mcpServers:
+    # Servers with direct tools are warmed up before the review, so their tools are
+    # available from the first request.
+    wripy:
+      url: envFETCH_MCP_URL
+      headers:
+        Authorization: Bearer envFETCH_MCP_KEY
+      directTools: true
+    snomcy:
+      url: envSEARCH_MCP_URL
+      headers:
+        Authorization: Bearer envSEARCH_MCP_KEY
+      directTools: true
+    # The github server is connected only when the agent asks for it.
+    github:
+      url: https://api.githubcopilot.com/mcp
+      headers:
+        Authorization: Bearer envGITHUB_TOKEN
+      directTools: false
+      lifecycle: lazy
