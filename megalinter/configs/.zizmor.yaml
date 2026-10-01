@@ -5,3 +5,4 @@ rules:
       - ai-opeview.yaml
       - ai-review.yaml
       - repo-test.yaml
+      - review-pi_dev.yaml
