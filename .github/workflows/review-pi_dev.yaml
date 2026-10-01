@@ -1,5 +1,5 @@
 ---
-name: AI pi.dev Review
+name: AI Pideview
 on:
   # checkov:skip=CKV_GHA_7: dispatch only pipeline
   # jscpd:ignore-start
@@ -34,14 +34,15 @@ jobs:
       - name: Run AI review
         uses: megalomania428/github-actions/review-pi_dev@master
         with:
-          llm_mdl_url: ${{ inputs.llm-api-url || secrets.LLM_API_URL }}
-          llm_mdl_name: ${{ inputs.llm-api-model || secrets.LLM_API_MDL2PI }}
+          llm_mdl_url: ${{ inputs.llm-api-url || secrets.LLM_API_URL }} # gitleaks:allow
+          llm_mdl_name: "${{ inputs.llm-api-model ||
+            secrets.LLM_API_MDL2PI }}" # gitleaks:allow
           llm_mdl_key: "${{ inputs.llm-api-token ||
             !inputs.llm-api-url && secrets.LLM_API_KEY || 'dummy' }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }}
-          search_mcp_url: ${{ secrets.SEARCH_MCP_URL }}
-          search_mcp_key: ${{ secrets.SEARCH_MCP_KEY }}
-          fetch_mcp_url: ${{ secrets.FETCH_MCP_URL }}
-          fetch_mcp_key: ${{ secrets.FETCH_MCP_KEY }}
+          github_token: ${{ secrets.GITHUB_TOKEN }} # gitleaks:allow
+          search_mcp_url: ${{ secrets.SEARCH_MCP_URL }} # gitleaks:allow
+          search_mcp_key: ${{ secrets.SEARCH_MCP_KEY }} # gitleaks:allow
+          fetch_mcp_url: ${{ secrets.FETCH_MCP_URL }} # gitleaks:allow
+          fetch_mcp_key: ${{ secrets.FETCH_MCP_KEY }} # gitleaks:allow
           pr_number: ${{ inputs.pr-number }}
           # jscpd:ignore-end

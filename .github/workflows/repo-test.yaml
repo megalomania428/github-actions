@@ -55,6 +55,8 @@ jobs:
           submodules: true
           persist-credentials: false
       - name: Run MegaLinter
+        with:
+          override_dir: megalinter/configs
         uses: megalomania428/github-actions/megalinter@master
   all-green:
     name: all green
@@ -69,7 +71,7 @@ jobs:
       checks: read
     steps:
       - name: waiting for checks success
-        uses: poseidon/wait-for-status-checks@v0.6.0
+        uses: poseidon/wait-for-status-checks@v0.7.0
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
           ignore: all green

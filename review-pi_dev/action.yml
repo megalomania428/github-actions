@@ -15,7 +15,7 @@ inputs:
   llm_mdl_api:
     description: Pi API type of the LLM provider
     required: false
-    default: openai-completions
+    default: openai-responses
   llm_mdl_key:
     description: API key for the LLM API
     required: true
