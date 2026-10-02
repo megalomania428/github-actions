@@ -95,6 +95,11 @@ subst' >"${TMP}/config.json"
 for part in settings models mcp; do
   jq -e --arg part "${part}" '.[$part]' "${TMP}/config.json" >"${TMP}/${part}.json"
 done
+# Servers whose URL was left unset (the "dummy" default) cannot be connected, so
+# they are dropped from the effective MCP config instead of failing the warm-up.
+jq '.mcpServers |= ((. // {}) | with_entries(select(.value.url != "dummy")))' \
+  "${TMP}/mcp.json" >"${TMP}/mcp-live.json"
+mv "${TMP}/mcp-live.json" "${TMP}/mcp.json"
 # Enabled servers with direct tools, set per server or by the global default, are
 # warmed up before the review, so their tools are registered from the metadata
 # cache on the first request; the rest stay lazy.

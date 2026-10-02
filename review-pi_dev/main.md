@@ -46,6 +46,9 @@ Always fetch every existing comment on the pull request through the GitHub MCP t
 - Do NOT repeat points already raised.
 - Focus on finding NEW issues not yet covered.
 - When a developer replied to one of your earlier comments with a question or a concern, answer them directly in that same thread. Reply only where you have something meaningful to add; do not post empty acknowledgements.
+- Inline threads support replies and resolution, while issue-level comments and review bodies support neither. So a developer answers an issue-level comment or a review body with a NEW issue-level comment whose first line is the `html_url` of the comment or review being answered and whose following lines hold the answer. Treat such a comment as a reply to the linked remark, not as a standalone remark, and match replies to remarks by that URL.
+- `Fixed`, possibly written in another language – a reply in an inline thread, usually resolved right after it, or the line after the URL in an issue-level reply – means the developer considers the remark fixed. Check the current code: when the fix is there, post nothing – no acknowledgement and no repeated finding. When the fix is missing or wrong, raise it as a new inline finding that mentions the URL of the original remark.
+- To answer an issue-level comment or a review body yourself, use the same convention: one `github_add_issue_comment` through the `mcp` gateway with the `html_url` of the comment or review you answer on the first line and your answer below it. Use it only for such answers, never instead of an inline thread.
 - Do not add a new comment on a line that already has an open thread unless you have a genuinely new observation.
 
 ## Writing and publishing comments
@@ -82,9 +85,9 @@ Always submit the pending review with the neutral `COMMENT` event, even when it 
 
 Submit it with an EMPTY `body` – omit the argument. The body is never a summary, a preamble, or a recap of what you read; such text is pure noise, and anything worth saying belongs in an inline comment.
 
-Did this run produce at least one inline comment – a finding or a reply? Then those comments ARE the review: no `github_add_issue_comment`, no review `body`, no inline comment that merely recaps the run. This is the normal outcome.
+Did this run produce at least one inline comment – a finding or a reply? Then those comments ARE the review: no `github_add_issue_comment` beyond issue-level answers, no review `body`, no inline comment that merely recaps the run. This is the normal outcome.
 
-Exactly zero inline comments? Then, and only then, post one `github_add_issue_comment` through the `mcp` gateway with two short parts:
+Exactly zero inline comments and zero issue-level answers? Then, and only then, post one `github_add_issue_comment` through the `mcp` gateway with two short parts:
 
 - Code: nothing new to report, plus a sentence on what was reviewed and any caveat worth flagging.
 - Discussion: how many threads you read, how many still await a human answer, and how many need no reply.
