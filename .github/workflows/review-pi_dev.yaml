@@ -39,10 +39,10 @@ jobs:
             secrets.LLM_API_MDL2PI }}" # gitleaks:allow
           llm_mdl_key: "${{ inputs.llm-api-token ||
             !inputs.llm-api-url && secrets.LLM_API_KEY || 'dummy' }}"
-          github_token: ${{ secrets.GITHUB_TOKEN }} # gitleaks:allow
-          search_mcp_url: ${{ secrets.SEARCH_MCP_URL }} # gitleaks:allow
-          search_mcp_key: ${{ secrets.SEARCH_MCP_KEY }} # gitleaks:allow
-          fetch_mcp_url: ${{ secrets.FETCH_MCP_URL }} # gitleaks:allow
-          fetch_mcp_key: ${{ secrets.FETCH_MCP_KEY }} # gitleaks:allow
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          search_mcp_url: ${{ secrets.SEARCH_MCP_URL }}
+          search_mcp_key: ${{ secrets.SEARCH_MCP_KEY }}
+          fetch_mcp_url: ${{ secrets.FETCH_MCP_URL }}
+          fetch_mcp_key: ${{ secrets.FETCH_MCP_KEY }}
           pr_number: ${{ inputs.pr-number }}
           # jscpd:ignore-end
