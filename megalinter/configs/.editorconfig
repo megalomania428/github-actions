@@ -13,5 +13,5 @@ trim_trailing_whitespace = true
 indent_size = unset
 indent_style = tab
 
-[{*.md,*.json}]
+[{*.md,*.json,.gitleaksignore}]
 max_line_length = unset
