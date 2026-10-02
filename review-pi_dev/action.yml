@@ -5,69 +5,10 @@ branding:
   icon: git-pull-request
   color: purple
 inputs:
-  llm_mdl_name:
-    description: Model id sent to the LLM API and used as the default pi model
-    required: false
-    default: review
-  llm_mdl_url:
-    description: Base URL of the LLM API
-    required: true
-  llm_mdl_api:
-    description: Pi API type of the LLM provider
-    required: false
-    default: openai-responses
-  llm_mdl_key:
-    description: API key for the LLM API
-    required: true
-  llm_mdl_eff:
-    description: Whether the provider supports the reasoning effort parameter
-    required: false
-    default: "true"
-  llm_mdl_rsn:
-    description: Whether the model supports reasoning
-    required: false
-    default: "true"
-  llm_mdl_ctx:
-    description: Context window of the model in tokens
-    required: false
-    default: "200000"
-  llm_mdl_max:
-    description: Maximum number of output tokens of the model
-    required: false
-    default: "131072"
-  llm_mdl_lvl:
-    description: Default pi thinking level
-    required: false
-    default: high
-  # jscpd:ignore-start
-  github_token:
-    description: GitHub token used by the github MCP and PR lookup
-    required: true
-  search_mcp_url:
-    description: URL of the remote search MCP
-    required: false
-    default: dummy
-  search_mcp_key:
-    description: Bearer key for the remote search MCP
-    required: false
-    default: dummy
-  fetch_mcp_url:
-    description: URL of the remote fetch MCP
-    required: false
-    default: dummy
-  fetch_mcp_key:
-    description: Bearer key for the remote fetch MCP
-    required: false
-    default: dummy
   pr_number:
     description: Pull request number to review (resolved from the branch if empty)
     required: false
     default: ""
-  # jscpd:ignore-end
-  image:
-    description: Pi review container image
-    required: false
-    default: ghcr.io/raven428/review-pi_dev:latest
 runs:
   using: composite
   steps:
@@ -75,26 +16,4 @@ runs:
       shell: bash
       run: "${{ github.action_path }}/launch.sh"
       env:
-        LLM_MDL_NAME: ${{ inputs.llm_mdl_name }}
-        LLM_MDL_URL: ${{ inputs.llm_mdl_url }}
-        LLM_MDL_API: ${{ inputs.llm_mdl_api }}
-        LLM_MDL_KEY: ${{ inputs.llm_mdl_key }}
-        LLM_MDL_EFF: ${{ inputs.llm_mdl_eff }}
-        LLM_MDL_RSN: ${{ inputs.llm_mdl_rsn }}
-        LLM_MDL_CTX: ${{ inputs.llm_mdl_ctx }}
-        LLM_MDL_MAX: ${{ inputs.llm_mdl_max }}
-        LLM_MDL_LVL: ${{ inputs.llm_mdl_lvl }}
-        # jscpd:ignore-start
-        GITHUB_TOKEN: ${{ inputs.github_token }}
-        GH_TOKEN: ${{ inputs.github_token }}
-        SEARCH_MCP_URL: ${{ inputs.search_mcp_url }}
-        SEARCH_MCP_KEY: ${{ inputs.search_mcp_key }}
-        FETCH_MCP_URL: ${{ inputs.fetch_mcp_url }}
-        FETCH_MCP_KEY: ${{ inputs.fetch_mcp_key }}
         PR_NUMBER: ${{ inputs.pr_number || github.event.pull_request.number }}
-        IMAGE: ${{ inputs.image }}
-        GITHUB_API_URL: ${{ github.api_url }}
-        GITHUB_REPOSITORY: ${{ github.repository }}
-        GITHUB_REPOSITORY_OWNER: ${{ github.repository_owner }}
-        GITHUB_REPOSITORY_NAME: ${{ github.event.repository.name }}
-        # jscpd:ignore-end

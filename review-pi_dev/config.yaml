@@ -14,8 +14,8 @@ settings:
   enableInstallTelemetry: false
   lastChangelogVersion: "0.85.1"
   defaultProvider: omni
-  defaultModel: envLLM_MDL_NAME
-  defaultThinkingLevel: envLLM_MDL_LVL
+  defaultModel: envLLM_NAME
+  defaultThinkingLevel: envLLM_LVL
   theme: dark
   hideThinkingBlock: false
   warnings:
@@ -23,16 +23,16 @@ settings:
 models:
   providers:
     omni:
-      baseUrl: envLLM_MDL_URL
-      api: envLLM_MDL_API
-      apiKey: envLLM_MDL_KEY
+      baseUrl: envLLM_URL
+      api: envLLM_API
+      apiKey: envLLM_KEY
       compat:
-        supportsReasoningEffort: jsonLLM_MDL_EFF
+        supportsReasoningEffort: jsonLLM_EFF
       models:
-        - id: envLLM_MDL_NAME
-          reasoning: jsonLLM_MDL_RSN
-          contextWindow: jsonLLM_MDL_CTX
-          maxTokens: jsonLLM_MDL_MAX
+        - id: envLLM_NAME
+          reasoning: jsonLLM_RSN
+          contextWindow: jsonLLM_CTX
+          maxTokens: jsonLLM_MAX
           thinkingLevelMap:
             low: low
             medium: medium

@@ -5,15 +5,15 @@ set -ueo pipefail
 # by the value of the "<NAME>" environment variable, and values equal to
 # "json<NAME>" by the value of "<NAME>" parsed as JSON.
 # cspell:ignore argjson subst abrt gsub fromjson
-export LLM_MDL_NAME="${LLM_MDL_NAME:-review}"
-export LLM_MDL_URL="${LLM_MDL_URL:-dummy}"
-export LLM_MDL_API="${LLM_MDL_API:-openai-responses}"
-export LLM_MDL_KEY="${LLM_MDL_KEY:-dummy}"
-export LLM_MDL_EFF="${LLM_MDL_EFF:-true}"
-export LLM_MDL_RSN="${LLM_MDL_RSN:-true}"
-export LLM_MDL_CTX="${LLM_MDL_CTX:-200000}"
-export LLM_MDL_MAX="${LLM_MDL_MAX:-131072}"
-export LLM_MDL_LVL="${LLM_MDL_LVL:-high}"
+export LLM_NAME="${LLM_NAME:-review}"
+export LLM_URL="${LLM_URL:-dummy}"
+export LLM_API="${LLM_API:-openai-responses}"
+export LLM_KEY="${LLM_KEY:-dummy}"
+export LLM_EFF="${LLM_EFF:-true}"
+export LLM_RSN="${LLM_RSN:-true}"
+export LLM_CTX="${LLM_CTX:-1000000}"
+export LLM_MAX="${LLM_MAX:-131072}"
+export LLM_LVL="${LLM_LVL:-max}"
 # jscpd:ignore-start
 export GITHUB_TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-dummy}}"
 export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN}}"
