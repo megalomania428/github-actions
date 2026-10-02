@@ -64,6 +64,19 @@ if [[ -z "${PR_NUMBER:-}" ]]; then
   echo 'No pull request number resolved' >&2
   exit 1
 fi
+# Fork code must not run next to review secrets in CI. Fork pull requests and failed
+# lookups are refused; fork reviews use workstation chat apps outside this action.
+if [[ "${GITHUB_ACTIONS:-}" == 'true' ]] &&
+  ! curl -fsSL --connect-timeout 10 --max-time 30 \
+    -H "Authorization: Bearer ${GH_TOKEN}" -H 'Accept: application/vnd.github+json' \
+    "${GITHUB_API_URL}/repos/${GITHUB_REPOSITORY_OWNER}/${GITHUB_REPOSITORY_NAME}\
+/pulls/${PR_NUMBER}" |
+  jq -e '.head.repo.id as $head | ($head | type) == "number" and $head > 0 and
+    $head == .base.repo.id' >/dev/null; then
+  echo "Pull request #${PR_NUMBER} comes from a fork or cannot be checked: fork code" \
+    'must not run next to review secrets in CI; review it from a workstation' >&2
+  exit 1
+fi
 # jscpd:ignore-end
 # Locate the template config and prompt: prefer files provided by the reviewed
 # repository, otherwise fall back to the defaults shipped with this action.
