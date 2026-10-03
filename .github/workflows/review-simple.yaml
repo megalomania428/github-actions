@@ -56,6 +56,7 @@ permissions:
 jobs:
   review-simple:
     runs-on: ubuntu-latest
+    name: review simple
     steps:
       - uses: actions/checkout@v7
         with:
@@ -63,7 +64,7 @@ jobs:
           fetch-tags: true
           submodules: recursive
           persist-credentials: false
-      - name: Run AI review
+      - name: Review by simple script
         # jscpd:ignore-end
         uses: megalomania428/github-actions/review-simple@master
         with:
