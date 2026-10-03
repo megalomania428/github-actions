@@ -2,7 +2,7 @@
 rules:
   unpinned-uses:
     ignore:
-      - ai-opeview.yaml
-      - ai-review.yaml
+      - review-opencode.yaml
+      - review-simple.yaml
       - repo-test.yaml
       - review-pi_dev.yaml
