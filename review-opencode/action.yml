@@ -1,5 +1,5 @@
 ---
-name: Opencode Review
+name: AI review opencode
 description: Run the opencode review container against a pull request
 branding:
   icon: git-pull-request
@@ -44,7 +44,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Run opencode review
+    - name: Run opencode AI review
       shell: bash
       run: "${{ github.action_path }}/launch.sh"
       env:

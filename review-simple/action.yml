@@ -1,5 +1,5 @@
 ---
-name: AI Review
+name: AI review simple
 description: Run the ai-review container against a pull request
 branding:
   icon: git-pull-request
@@ -63,7 +63,7 @@ inputs:
 runs:
   using: composite
   steps:
-    - name: Run AI review
+    - name: Run simple AI review
       shell: bash
       run: "${{ github.action_path }}/launch.sh"
       env:
