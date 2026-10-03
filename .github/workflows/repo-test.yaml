@@ -22,7 +22,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          submodules: true
+          submodules: recursive
           persist-credentials: false
   linters:
     name: linters
@@ -32,7 +32,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          submodules: true
+          submodules: recursive
           persist-credentials: false
       - name: lint the repo
         env:
@@ -52,7 +52,7 @@ jobs:
       - uses: actions/checkout@v7
         with:
           fetch-depth: 0
-          submodules: true
+          submodules: recursive
           persist-credentials: false
       - name: Run MegaLinter
         with:
