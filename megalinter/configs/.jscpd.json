@@ -1,5 +1,10 @@
 {
   "threshold": 0,
   "reporters": ["html", "markdown"],
-  "ignore": ["**/*_test.go", "megalinter/configs/*", "review-pi_dev/main.md"]
+  "ignore": [
+    "**/*_test.go",
+    "megalinter/configs/*",
+    ".megalinter/configs/*",
+    "review-pi_dev/main.md"
+  ]
 }
