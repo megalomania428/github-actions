@@ -7,5 +7,5 @@
     "lib": ["ES2022"],
     "types": []
   },
-  "include": ["review-pi_dev/log.ts"]
+  "include": ["review-pi_dev/log.ts", "review-pi_dev/retry.ts"]
 }

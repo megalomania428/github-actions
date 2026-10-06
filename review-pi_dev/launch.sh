@@ -14,6 +14,7 @@ export LLM_RSN="${LLM_RSN:-true}"
 export LLM_CTX="${LLM_CTX:-1000000}"
 export LLM_MAX="${LLM_MAX:-131072}"
 export LLM_LVL="${LLM_LVL:-max}"
+export LLM_RETRIES="${LLM_RETRIES:-111}"
 # jscpd:ignore-start
 export GITHUB_TOKEN="${GITHUB_TOKEN:-${GH_TOKEN:-dummy}}"
 export GH_TOKEN="${GH_TOKEN:-${GITHUB_TOKEN}}"
@@ -78,21 +79,31 @@ if [[ "${GITHUB_ACTIONS:-}" == 'true' ]] &&
   exit 1
 fi
 # jscpd:ignore-end
-# Locate the template config and prompt: prefer files provided by the reviewed
-# repository, otherwise fall back to the defaults shipped with this action.
+# Locate the prompt and the config of the reviewed repository, otherwise fall back to
+# the defaults shipped with this action.
 action_dir="${GITHUB_ACTION_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
-config_tpl='.github/review-pi_dev.yaml'
+config_usr='.github/review-pi_dev.yaml'
 prompt_tpl='.github/review-pi_dev.md'
-[[ -f "${config_tpl}" ]] || config_tpl="${action_dir}/config.yaml"
 [[ -f "${prompt_tpl}" ]] || prompt_tpl="${action_dir}/main.md"
 # Create a private workspace and always clean it up, even on signals.
 TMP="$(mktemp -d -t review-pi_dev-XXXXXX)"
 trap 'rm -rf "${TMP}"' INT QUIT ABRT TERM EXIT
-# Convert the template to JSON and replace the placeholders: "env<NAME>" inside any
-# string or object key becomes the string value of the variable, while a value equal
-# to "json<NAME>" becomes the value of the variable parsed as JSON. An invalid JSON
-# value fails the run here instead of producing a config pi cannot read.
-yq -o=json -P '.' "${config_tpl}" | jq --argjson env "$(jq -n 'env')" 'def str:
+# Read the repository config apart from the jq call, so a broken YAML fails the run.
+config_usr_json='null'
+if [[ -f "${config_usr}" ]]; then
+  config_usr_json="$(yq -o=json '.' "${config_usr}")"
+fi
+# Build every section from the shipped config.yaml: the same section of the repository
+# config replaces its "defaults" unless missing or null, and its "mandatory" part is
+# merged recursively under the result, so it only adds the keys left unset. Then convert
+# the template to JSON and replace the placeholders: "env<NAME>" inside any string or
+# object key becomes the string value of the variable, while a value equal to
+# "json<NAME>" becomes the value of the variable parsed as JSON. An invalid JSON value
+# fails the run here instead of producing a config pi cannot read.
+yq -o=json -P '.' "${action_dir}/config.yaml" | jq --argjson usr "${config_usr_json}" \
+  'with_entries(.key as $k | .value |= (.defaults as $d |
+  .mandatory * ($usr[$k] | if . == null then $d else . end)))' |
+  jq --argjson env "$(jq -n 'env')" 'def str:
   gsub("env(?<n>[A-Z_]+)"; ($env[.n] // ("env" + .n)));
 def subst:
   if type == "string" then
@@ -122,7 +133,8 @@ jq '(.settings.directTools // false) as $all | .mcpServers |= ((. // {}) |
   >"${TMP}/mcp-warm.json"
 cp "${prompt_tpl}" "${TMP}/main.md"
 podman_args=(-v "${TMP}/main.md:/opt/review/main.md:ro"
-  -v "${action_dir}/log.ts:/opt/review/log.ts:ro")
+  -v "${action_dir}/log.ts:/opt/review/log.ts:ro"
+  -v "${action_dir}/retry.ts:/opt/review/retry.ts:ro")
 if jq -e '.mcpServers | length > 0' "${TMP}/mcp-warm.json" >/dev/null; then
   podman_args+=(-v "${TMP}/mcp-warm.json:/opt/review/mcp-warm.json:ro")
 fi
@@ -133,8 +145,9 @@ if [[ -f '.github/copilot-instructions.md' ]]; then
   pi_args+=(--append-system-prompt /workspace/repo/.github/copilot-instructions.md)
 fi
 # The log.ts extension streams the prompt, thinking, answers and tool calls with their
-# output to stderr, so the CI log shows the review progress live.
-pi_args+=(-e /opt/review/log.ts)
+# output to stderr, so the CI log shows the review progress live. The retry.ts extension
+# retries failed LLM requests and must load after log.ts, which prints its notices.
+pi_args+=(-e /opt/review/log.ts -e /opt/review/retry.ts)
 # Build the review request passed to pi. The reviewer role and rules live in
 # main.md; this message only names the concrete pull request.
 message="Review pull request #${PR_NUMBER} in repository \

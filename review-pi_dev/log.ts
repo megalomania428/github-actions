@@ -66,8 +66,18 @@ interface CompactFailedEvent {
   reason: string
   errorMessage?: string
 }
+interface RetryEvent {
+  error: string
+  retry: number
+  delay: number
+  waited: number
+  budget: number
+}
 interface Api {
   on: <T>(name: string, handler: (event: T) => void) => void
+  events: {
+    on: (channel: string, handler: (data: unknown) => void) => unknown
+  }
 }
 const RESET = '\x1b[0m'
 const BOLD = '\x1b[1m'
@@ -301,6 +311,16 @@ export default function (pi: Api): void {
     } else if (reason === 'length') {
       print(['✗ response stopped at the output token limit'], BOLD + RED)
     }
+  })
+  // retry.ts reports a failed request after the events of its attempt are printed, so
+  // the open line of the attempt ends before the notice and the next attempt starts
+  // under its own header.
+  pi.events.on('review:retry', (data) => {
+    const event = data as RetryEvent
+    closeStream()
+    const retry = `retry ${event.retry} in ${event.delay}s`
+    const elapsed = `elapsed ${event.waited}s of ${event.budget}s`
+    print([`✗ request error: ${event.error}, ${retry}, ${elapsed}`], BOLD + RED)
   })
   pi.on<ToolStartEvent>('tool_execution_start', (event) => {
     closeStream()
