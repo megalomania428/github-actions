@@ -49,14 +49,15 @@ on:
         description: "custom API token"
         type: string
 # jscpd:ignore-start
-permissions:
-  contents: read
-  pull-requests: write
-  issues: write
+permissions: {}
 jobs:
   review-simple:
     runs-on: ubuntu-latest
     name: review simple
+    permissions:
+      contents: read
+      pull-requests: write
+      issues: write
     steps:
       - uses: actions/checkout@v7
         with:
