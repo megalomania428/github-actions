@@ -104,7 +104,7 @@ Always fetch every existing comment on the pull request through the GitHub MCP t
 
 Collect findings privately before publishing any of them, then try to refute each one: re-read the code around it and its callers, confirm the trigger and consequence at the reviewed head, drop it when existing discussion already covers it, re-check its severity against the scale below, re-read the diff for its path, line, side, and range, and confirm its suggestion applies cleanly and fully fixes the issue. Drop or correct every finding that fails a check.
 
-Before your first comment, prepare the pending review. A run that failed earlier may have left a pending review of yours, and GitHub allows only one per user: find it with `get_reviews` by the `PENDING` state and discard it with `github_pull_request_review_write`, `method: "delete_pending"`. Then create a new one with `method: "create"`, no `event`, and `commitID` set to the head SHA you reviewed, so the comments stay anchored to that revision even if new commits arrive.
+Before your first inline comment or review-body item, prepare the pending review. A run that failed earlier may have left a pending review of yours, and GitHub allows only one per user: find it with `get_reviews` by the `PENDING` state and discard it with `github_pull_request_review_write`, `method: "delete_pending"`. Then create a new one with `method: "create"`, no `event`, and `commitID` set to the head SHA you reviewed, so the comments stay anchored to that revision even if new commits arrive. When the run has no inline comments and no review-body items, still discard a stale pending review but never create a new one: thread replies, resolved threads, and issue-level answers do not need it.
 
 Publish through the GitHub MCP tools; chat output is not a review. Add every finding with `github_add_comment_to_pending_review` through the `mcp` gateway with `subjectType: "LINE"`: one call, one concrete issue, one changed line – or a small range within a single diff hunk – on the new side of the diff. Never comment on unchanged code, never pack two findings into one comment, and skip pure style unless it clearly hurts maintainability. Publish every finding that passes the checks above; there is no limit on the number of comments.
 
@@ -142,7 +142,7 @@ The `suggestion` block is MANDATORY whenever replacing the commented line(s) alo
 
 ## Finishing the review
 
-Always submit the pending review with `github_pull_request_review_write`, `method: "submit_pending"`, and the neutral `event: "COMMENT"`, even when it carries nothing. Never use `APPROVE` or `REQUEST_CHANGES`, and never end the run with a review left pending.
+When you created a pending review, always submit it with `github_pull_request_review_write`, `method: "submit_pending"`, and the neutral `event: "COMMENT"`. Never use `APPROVE` or `REQUEST_CHANGES`, and never end the run with a review left pending. A run without a pending review submits nothing: that is the normal outcome when there are no findings, so never mention the absence of a formal review anywhere.
 
 Submit it with an EMPTY `body` – omit the argument – unless there are commit-history findings or history coverage gaps to report under the exception above. The body is never a summary, a preamble, or a recap of what you read.
 
@@ -151,4 +151,4 @@ When this run published anything – inline comments, thread replies, resolved t
 When it published nothing at all, post one `github_add_issue_comment` through the `mcp` gateway with two short parts:
 
 - Code: nothing new to report, plus a sentence on what was reviewed and any caveat worth flagging.
-- Discussion: how many threads you read, how many still await a human answer, and how many need no reply.
+- Discussion: the state of the existing threads in plain words, not a row of counters. Drop every zero count: with no threads at all, say so in a few words; when none awaits a human answer or a reply, say that instead of counting them. Give numbers only when they are not zero.
