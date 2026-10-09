@@ -2,6 +2,11 @@
 
 [![repo-test](https://github.com/megalomania428/github-actions/actions/workflows/repo-test.yaml/badge.svg)](https://github.com/megalomania428/github-actions/actions/workflows/repo-test.yaml)
 
+## Actions
+
+- [megalinter](megalinter/README.md) – default configs and overrides of MegaLinter
+- [review pi.dev](review-pi_dev/README.md) – pull request review with pi.dev agent
+
 ## Make release
 
 - clone me:
@@ -14,5 +19,5 @@ git clone --recursive git@github.com:megalomania428/github-actions.git github-ac
 
 ```bash
 git checkout master && git pull
-git tag -fm $(git branch --sho) v1.0.1 && git push --force origin $(git describe)
+git tag -fm $(git branch --sho) v1.0.2 && git push --force origin $(git describe)
 ```
