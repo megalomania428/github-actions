@@ -17,7 +17,7 @@ jobs:
   tests:
     name: tests
     timeout-minutes: 33
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -27,7 +27,7 @@ jobs:
   linters:
     name: linters
     timeout-minutes: 11
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -47,7 +47,7 @@ jobs:
   MegaLinter:
     name: MegaLinter
     timeout-minutes: 11
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v7
         with:
@@ -55,13 +55,13 @@ jobs:
           submodules: recursive
           persist-credentials: false
       - name: Run MegaLinter
-        with:
-          override_dir: megalinter/configs
-        uses: megalomania428/github-actions/megalinter@master
+        env:
+          OVERRIDE_DIR: megalinter/configs
+        uses: ./megalinter
   all-green:
     name: all green
     timeout-minutes: 5
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     needs:
       - tests
       - linters

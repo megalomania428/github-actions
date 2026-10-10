@@ -52,7 +52,7 @@ on:
 permissions: {}
 jobs:
   review-simple:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: review simple
     permissions:
       contents: read
@@ -67,7 +67,7 @@ jobs:
           persist-credentials: false
       - name: Review by simple script
         # jscpd:ignore-end
-        uses: megalomania428/github-actions/review-simple@master
+        uses: ./review-simple
         with:
           # jscpd:ignore-start
           llm_api_url: ${{ inputs.llm-api-url || secrets.LLM_API_URL }}

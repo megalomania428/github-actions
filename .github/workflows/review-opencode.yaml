@@ -20,7 +20,7 @@ on:
 permissions: {}
 jobs:
   review-opencode:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     name: review opencode
     permissions:
       contents: read
@@ -35,7 +35,7 @@ jobs:
           persist-credentials: false
       - name: Review by opencode agent
         # jscpd:ignore-end
-        uses: megalomania428/github-actions/review-opencode@master
+        uses: ./review-opencode
         with:
           # jscpd:ignore-start
           llm_api_url: ${{ inputs.llm-api-url || secrets.LLM_API_URL }}
