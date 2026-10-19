@@ -119,9 +119,26 @@ GO_GOLANGCI_LINT_PRE_COMMANDS:
     cwd: workspace
     continue_if_failed: true
 SPELL_CSPELL_PRE_COMMANDS:
-  - command: "npm install --prefix /node-deps @cspell/dict-ru_ru
-      @cspell/dict-software-terms"
+  - command: |
+      set -e
+      stock='/node-deps/node_modules'
+      root='/node-cspell'
+      version="$(node -p "require('${stock}/cspell/package.json').version")"
+      [[ "${version}" =~ ^[0-9]+\.[0-9]+\.[0-9]+ ]] || exit 1
+      mkdir -p "${root}"
+      npm install --prefix "${root}" --no-save --global=false --workspaces=false \
+        --package-lock=false --ignore-scripts --no-audit --no-fund \
+        "cspell@${version}" @cspell/dict-ru_ru @cspell/dict-software-terms
+      for file in dict-ru_ru/ru_ru.trie.gz dict-software-terms/dict/softwareTerms.txt.gz \
+        dict-software-terms/dict/software-tools.txt \
+        dict-software-terms/dict/networkingTerms.txt \
+        dict-software-terms/dict/computing-acronyms.txt; do
+        [[ -f "${root}/node_modules/@cspell/${file}" ]] || exit 1
+      done
     cwd: root
+    continue_if_failed: false
+SPELL_CSPELL_CLI_EXECUTABLE:
+  - /node-cspell/node_modules/.bin/cspell
 ACTION_ZIZMOR_UNSECURED_ENV_VARIABLES:
   - GITHUB_TOKEN
 ACTION_ZIZMOR_CONFIG_FILE: ".zizmor.yaml"
