@@ -1,12 +1,16 @@
-// Pi extension for CI runs: retry every failed LLM request of the providers configured
-// in models.json, except cancellations and context overflows, which pi handles itself.
-// The "llmRetries" setting is the budget in seconds for the sum of the delays between
-// attempts, 111 by default. As in go-lib-ci, the delay starts at 1 second, grows by 1
-// second every 3 retries up to 7 seconds, stays there for 3 more retries and starts
-// over. Events of an attempt reach the agent live: only the first "start" is passed on
-// and the error of a failed attempt is not, so the next attempt replaces the partial
-// message. Pi modules are imported by name at runtime, so the linters need no pi
-// packages and the types below describe only the fields used here.
+// Pi extension: retry every failed LLM request of the provider of the current model and
+// of the providers with configured auth, except cancellations and context overflows,
+// which pi handles itself. The "llmRetries" setting is the budget in seconds for the
+// sum of the delays between the attempts of one request, 111 by default, and 0 turns
+// the extension off. As in go-lib-ci, the delay starts at 1 second, grows by 1 second
+// every 3 retries up to 7 seconds, stays there for 3 more retries and starts over. A
+// wrapper is the provider pi built from its catalog, models.json and other extensions,
+// registered again as a native provider with only its streams replaced, so its auth,
+// OAuth, models and the streams of every api stay as they are. Events of an attempt
+// reach the agent live: only the first "start" is passed on and the error of a failed
+// attempt is not, so the next attempt replaces the partial message. Pi modules are
+// imported by name at runtime, so the linters need no pi packages and the types below
+// describe only the fields used here.
 // cspell:ignore earendil
 declare function setTimeout (handler: () => void, ms: number): unknown
 declare function clearTimeout (id: unknown): void
@@ -23,6 +27,7 @@ interface Model {
 }
 interface Options {
   signal?: Signal
+  [NESTED]?: boolean
 }
 interface Message {
   role: 'assistant'
@@ -43,20 +48,24 @@ interface StreamEvent {
 interface Stream extends AsyncIterable<StreamEvent> {
   push: (event: StreamEvent) => void
 }
-type StreamSimple = (model: Model, context: unknown, options?: Options) => Stream
-interface BuiltinModel {
-  id: string
-  api: string
-}
+type StreamFunction = (model: Model, context: unknown, options?: Options) => Stream
 interface Compat {
-  getApiProvider: (api: string) => { streamSimple: StreamSimple } | undefined
   createAssistantMessageEventStream: () => Stream
   isContextOverflow: (message: Message, contextWindow?: number) => boolean
-  getModels: (provider: string) => BuiltinModel[]
 }
-interface ProviderConfig {
-  api?: unknown
-  models?: Array<{ id?: unknown, api?: unknown }>
+interface Provider {
+  readonly id: string
+  stream: StreamFunction
+  streamSimple: StreamFunction
+}
+interface Registry {
+  getAvailable: () => Model[]
+  getProvider: (id: string) => Provider | undefined
+  getRegisteredNativeProvider: (id: string) => Provider | undefined
+}
+interface Context {
+  model: Model | undefined
+  modelRegistry: Registry
 }
 interface PiRetry {
   enabled?: unknown
@@ -64,16 +73,14 @@ interface PiRetry {
     maxRetries?: unknown
   }
 }
+type Settings = Record<string, unknown>
 interface UpdateEvent {
   assistantMessageEvent: object
 }
-interface Registration {
-  api: string
-  streamSimple: StreamSimple
-}
 interface Api {
-  on: <T>(name: string, handler: (event: T) => void) => void
-  registerProvider: (name: string, config: Registration) => void
+  on: <T>(name: string, handler: (event: T, ctx: Context) => void) => void
+  registerProvider: (provider: Provider) => void
+  unregisterProvider: (name: string) => void
   events: {
     emit: (channel: string, data: unknown) => void
   }
@@ -89,6 +96,21 @@ const INITIAL_DELAY = 1
 const DELAY_STEP = 1
 const STEP_RETRIES = 3
 const MAX_DELAY = 7
+// Events after which pi may send a request through a provider not wrapped yet: no event
+// tells about providers registered later, so the wrappers are checked before requests.
+const COVER_EVENTS = ['session_start', 'model_select', 'before_agent_start', 'turn_start',
+  'session_before_compact', 'session_before_tree']
+// The key is the same for every load of this module, so after /reload a wrapper left by
+// an earlier load still leads to the provider it wraps and is never wrapped again.
+const ORIGINAL: unique symbol = Symbol.for('review-pi_dev.retry.original')
+// A wrapper marks the options of its attempts, so a wrapper it reaches through a provider
+// another extension registered over a wrapper passes the request on without retries, as
+// long as that provider passes the options on, as they are or copied by spread, instead
+// of building them from named fields.
+const NESTED: unique symbol = Symbol.for('review-pi_dev.retry.nested')
+interface Wrapper extends Provider {
+  [ORIGINAL]: Provider
+}
 const ZERO_USAGE = {
   input: 0,
   output: 0,
@@ -132,23 +154,6 @@ function delayOf (retry: number): number {
   const block = Math.floor(((retry - 1) % cycle) / STEP_RETRIES)
   return Math.min(block * DELAY_STEP + INITIAL_DELAY, MAX_DELAY)
 }
-// The stream of a provider is replaced for one api, so all its models must use it,
-// including the built-in models of pi a provider with a built-in name keeps.
-function apiOf (name: string, config: ProviderConfig, builtins: BuiltinModel[]): string {
-  const apis = new Set<unknown>(config.api === undefined ? [] : [config.api])
-  for (const model of config.models ?? []) apis.add(model.api ?? config.api)
-  const [api] = apis
-  if (apis.size !== 1 || typeof api !== 'string') {
-    throw new Error(`provider "${name}" in models.json needs one api for all its models`)
-  }
-  const ids = new Set((config.models ?? []).map((model) => model.id))
-  const other = builtins.find((model) => !ids.has(model.id) && model.api !== api)
-  if (other !== undefined) {
-    throw new Error(`provider "${name}" in models.json keeps built-in model ` +
-      `"${other.id}" with api "${other.api}" instead of "${api}"`)
-  }
-  return api
-}
 // Retries of pi itself would multiply the attempts made here.
 function checkPiRetries (value: unknown): void {
   const retry = (typeof value === 'object' && value !== null ? value : {}) as PiRetry
@@ -159,12 +164,19 @@ function checkPiRetries (value: unknown): void {
       'retry.provider.maxRetries unset or not above 0 in settings.json')
   }
 }
-// Shared state of all requests: the retry budget and the assistant events already
-// handled by the extensions loaded before this one, log.ts among them.
+// The provider a wrapper of any load of this module wraps.
+function originalOf (provider: Provider | undefined): Provider | undefined {
+  return (provider as Partial<Wrapper> | undefined)?.[ORIGINAL]
+}
+// Shared state of all requests of one load of the extension: the retry budget, the
+// wrappers it registered and the assistant events already handled by the extensions
+// loaded before this one, log.ts among them.
 class Retries {
-  readonly pi: Api
   readonly compat: Compat
   readonly budget: number
+  private readonly pi: Api
+  private active = true
+  private readonly wrappers = new Map<string, Provider>()
   private readonly handled = new WeakSet<object>()
   private readonly waiters = new Map<object, () => void>()
   constructor (pi: Api, compat: Compat, budget: number) {
@@ -190,22 +202,69 @@ class Retries {
     this.waiters.delete(event)
   }
 
-  wrap (base: StreamSimple): StreamSimple {
-    return (model, context, options) =>
-      new RetryingRequest(this, base, model, context, options).start()
+  // The pi of an ended session is stale, so requests finishing later stay silent.
+  notify (data: object): void {
+    if (this.active) this.pi.events.emit('review:retry', data)
+  }
+
+  // Wrap the provider of the current model and every provider with configured auth,
+  // unless its native provider is a wrapper of this load already. Wrappers of other
+  // providers stay registered when the current model changes.
+  cover (ctx: Context): void {
+    if (!this.active) return
+    const registry = ctx.modelRegistry
+    const ids = new Set(registry.getAvailable().map((model) => model.provider))
+    const current = ctx.model
+    if (current !== undefined) ids.add(current.provider)
+    for (const id of ids) {
+      const native = registry.getRegisteredNativeProvider(id)
+      if (native !== undefined && native === this.wrappers.get(id)) continue
+      const original = originalOf(native) ?? registry.getProvider(id)
+      if (original === undefined) continue
+      const wrapper = {
+        ...original,
+        stream: this.wrap((model, context, options) =>
+          original.stream(model, context, options)),
+        streamSimple: this.wrap((model, context, options) =>
+          original.streamSimple(model, context, options))
+      }
+      // A copy of the wrapper made by another extension must not lead past its streams.
+      Object.defineProperty(wrapper, ORIGINAL, { value: original })
+      this.wrappers.set(id, wrapper)
+      this.pi.registerProvider(wrapper)
+    }
+  }
+
+  // Give the providers back when the session ends: after /reload the registry is the
+  // same, but the pi of this load is stale. A provider registered over a wrapper since
+  // belongs to another extension and stays.
+  release (ctx: Context): void {
+    this.active = false
+    for (const [id, wrapper] of this.wrappers) {
+      if (ctx.modelRegistry.getRegisteredNativeProvider(id) === wrapper) {
+        this.pi.unregisterProvider(id)
+      }
+    }
+    this.wrappers.clear()
+  }
+
+  wrap (base: StreamFunction): StreamFunction {
+    return (model, context, options) => options?.[NESTED] === true
+      ? base(model, context, options)
+      : new RetryingRequest(this, base, model, context, options).start()
   }
 }
 // One LLM request: its attempts reach the agent through a single stream.
 class RetryingRequest {
   private readonly retries: Retries
-  private readonly base: StreamSimple
+  private readonly base: StreamFunction
   private readonly model: Model
   private readonly context: unknown
   private readonly options: Options | undefined
   private readonly stream: Stream
   private started = false
   private last: object | undefined
-  constructor (retries: Retries, base: StreamSimple, model: Model, context: unknown,
+  constructor (retries: Retries, base: StreamFunction, model: Model, context: unknown,
     options: Options | undefined) {
     this.retries = retries
     this.base = base
@@ -238,7 +297,7 @@ class RetryingRequest {
         this.finish(this.abort(failure))
         return
       }
-      this.retries.pi.events.emit('review:retry', {
+      this.retries.notify({
         error: failure.errorMessage ?? 'no details',
         retry,
         delay,
@@ -259,7 +318,8 @@ class RetryingRequest {
   // partial message instead of adding another one.
   private async attempt (): Promise<Message | undefined> {
     try {
-      for await (const event of this.base(this.model, this.context, this.options)) {
+      const options = { ...this.options, [NESTED]: true }
+      for await (const event of this.base(this.model, this.context, options)) {
         if (event.type === 'error') return event.error ?? this.failure('no details')
         if (event.type === 'start') {
           if (this.started) continue
@@ -309,16 +369,8 @@ class RetryingRequest {
     this.stream.push({ type: 'error', reason, error: failure })
   }
 }
-export default async function (pi: Api): Promise<void> {
-  const compat = await import(COMPAT) as Compat
-  const { getAgentDir } = await import(AGENT) as { getAgentDir: () => string }
-  const { readFileSync } = await import(FS) as {
-    readFileSync: (path: string, encoding: 'utf8') => string
-  }
-  const { join } = await import(PATH) as { join: (...parts: string[]) => string }
-  const read = (name: string): Record<string, unknown> =>
-    JSON.parse(readFileSync(join(getAgentDir(), name), 'utf8')) as Record<string, unknown>
-  const settings = read('settings.json')
+// Check the settings and subscribe to the events; kept apart from the imports for tests.
+export function install (pi: Api, compat: Compat, settings: Settings): void {
   const budget = budgetOf(settings.llmRetries)
   if (budget === 0) return
   checkPiRetries(settings.retry)
@@ -326,18 +378,18 @@ export default async function (pi: Api): Promise<void> {
   pi.on<UpdateEvent>('message_update', (event) => {
     retries.handle(event.assistantMessageEvent)
   })
-  const providers = read('models.json').providers
-  if (typeof providers !== 'object' || providers === null ||
-    Object.keys(providers).length === 0) {
-    throw new Error('models.json has no providers to retry')
+  for (const name of COVER_EVENTS) {
+    pi.on<unknown>(name, (_event, ctx) => { retries.cover(ctx) })
   }
-  const configs = providers as Record<string, ProviderConfig>
-  for (const [name, config] of Object.entries(configs)) {
-    const api = apiOf(name, config, compat.getModels(name))
-    const base = compat.getApiProvider(api)
-    if (base === undefined) {
-      throw new Error(`provider "${name}" in models.json has unknown api "${api}"`)
-    }
-    pi.registerProvider(name, { api, streamSimple: retries.wrap(base.streamSimple) })
+  pi.on<unknown>('session_shutdown', (_event, ctx) => { retries.release(ctx) })
+}
+export default async function (pi: Api): Promise<void> {
+  const compat = await import(COMPAT) as Compat
+  const { getAgentDir } = await import(AGENT) as { getAgentDir: () => string }
+  const { readFileSync } = await import(FS) as {
+    readFileSync: (path: string, encoding: 'utf8') => string
   }
+  const { join } = await import(PATH) as { join: (...parts: string[]) => string }
+  const text = readFileSync(join(getAgentDir(), 'settings.json'), 'utf8')
+  install(pi, compat, JSON.parse(text) as Settings)
 }
