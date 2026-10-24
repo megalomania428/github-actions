@@ -38,6 +38,7 @@ interface Call {
 type Run = (model: Model, context: unknown, options?: unknown) => AsyncIterable<Event>
 interface Provider {
   id: string
+  getModels: () => Model[]
   stream: Run
   streamSimple: Run
   [key: string]: unknown
@@ -100,6 +101,7 @@ const modelOf = (provider: string, api = 'openai-completions'): Model =>
 // A provider whose own streams fail with the given outcomes and then succeed.
 function providerOf (id: string, outcomes: Event[][] = []): Provider & { calls: Call[] } {
   const calls: Call[] = []
+  const models = [modelOf(id)]
   const run = (kind: string): Run => (model, context, options) => {
     calls.push({ kind, model, context, options })
     return streamOf(outcomes.shift() ?? succeeded())
@@ -108,10 +110,54 @@ function providerOf (id: string, outcomes: Event[][] = []): Provider & { calls: 
     id,
     name: id,
     auth: { apiKey: {} },
-    getModels: () => [],
+    getModels: () => models,
     calls,
     stream: run('stream'),
     streamSimple: run('streamSimple')
+  }
+}
+// A provider implemented by a class, with fields on the prototype and in private ones.
+class ClassProvider {
+  readonly calls: string[] = []
+  readonly #outcomes: Event[][]
+  readonly #auth = { apiKey: {} }
+  readonly #models = [modelOf('boxed')]
+  #name = 'boxed'
+  constructor (outcomes: Event[][]) {
+    this.#outcomes = outcomes
+  }
+
+  get id (): string {
+    return 'boxed'
+  }
+
+  get name (): string {
+    return this.#name
+  }
+
+  set name (name: string) {
+    this.#name = name
+  }
+
+  get auth (): object {
+    return this.#auth
+  }
+
+  getModels (): Model[] {
+    return this.#models
+  }
+
+  stream (): FakeStream {
+    return this.#run('stream')
+  }
+
+  streamSimple (): FakeStream {
+    return this.#run('streamSimple')
+  }
+
+  #run (kind: string): FakeStream {
+    this.calls.push(kind)
+    return streamOf(this.#outcomes.shift() ?? succeeded())
   }
 }
 // Pi with a registry without overlays, which serves a native provider as it is.
@@ -197,7 +243,7 @@ test('wraps the provider of the current model and keeps its fields', async () =>
   const [wrapper] = pi.registered
   assert.equal(wrapper.id, 'omni')
   assert.equal(wrapper.auth, provider.auth)
-  assert.equal(wrapper.getModels, provider.getModels)
+  assert.equal(wrapper.getModels(), provider.getModels())
   assert.equal(originalOf(wrapper), provider)
   const model = modelOf('omni')
   const context = { messages: [] }
@@ -218,6 +264,23 @@ test('wraps the provider of the current model and keeps its fields', async () =>
   }
   assert.deepEqual(pi.notices,
     [{ error: 'boom', retry: 1, delay: 1, waited: 0, budget: 111 }])
+})
+test('a class provider keeps its prototype, accessors and private fields', async () => {
+  const provider = new ClassProvider([failed('boom')])
+  const pi = started(provider as unknown as Provider)
+  const [wrapper] = pi.registered
+  assert.equal(wrapper.id, 'boxed')
+  assert.equal(wrapper.auth, provider.auth)
+  assert.equal(wrapper.getModels(), provider.getModels())
+  wrapper.name = 'renamed'
+  assert.equal(provider.name, 'renamed')
+  const copy = { ...wrapper }
+  assert.equal(copy.name, 'renamed')
+  assert.equal(copy.getModels(), provider.getModels())
+  const events = await collect(wrapper.streamSimple(modelOf('boxed'), {}))
+  assert.equal(events.at(-1)?.type, 'done')
+  assert.deepEqual(provider.calls, ['streamSimple', 'streamSimple'])
+  assert.equal(pi.notices.length, 1)
 })
 test('retries the stream of the provider as well', async () => {
   const provider = providerOf('omni', [failed('boom')])
@@ -293,6 +356,7 @@ test('a wrapper reached through another wrapper does not retry again', async () 
   }
   const other = {
     id: 'omni',
+    getModels: inner.getModels,
     stream: layer(inner.stream),
     streamSimple: layer(inner.streamSimple)
   }
