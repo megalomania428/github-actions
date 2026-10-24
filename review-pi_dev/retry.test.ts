@@ -177,17 +177,14 @@ const tick = async (): Promise<void> => {
 // Read the stream to its end, moving the fake clock on while it waits.
 async function collect (stream: AsyncIterable<Event>): Promise<Event[]> {
   const events: Event[] = []
-  let finished = false
   const reading = (async () => {
     for await (const event of stream) events.push(event)
-    finished = true
+    return true
   })()
-  for (let step = 0; !finished; step++) {
+  for (let step = 0; !await Promise.race([reading, tick().then(() => false)]); step++) {
     if (step > 10000) throw new Error('the stream never ended')
-    await tick()
     mock.timers.tick(1000)
   }
-  await reading
   return events
 }
 const originalOf = (provider: Provider | undefined): unknown =>

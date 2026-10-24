@@ -25,6 +25,11 @@ interface Model {
   provider: string
   contextWindow?: number
 }
+// A wrapper marks the options of its attempts, so a wrapper it reaches through a provider
+// another extension registered over a wrapper passes the request on without retries, as
+// long as that provider passes the options on, as they are or copied by spread, instead
+// of building them from named fields.
+const NESTED: unique symbol = Symbol.for('review-pi_dev.retry.nested')
 interface Options {
   signal?: Signal
   [NESTED]?: boolean
@@ -103,11 +108,6 @@ const COVER_EVENTS = ['session_start', 'model_select', 'before_agent_start', 'tu
 // The key is the same for every load of this module, so after /reload a wrapper left by
 // an earlier load still leads to the provider it wraps and is never wrapped again.
 const ORIGINAL: unique symbol = Symbol.for('review-pi_dev.retry.original')
-// A wrapper marks the options of its attempts, so a wrapper it reaches through a provider
-// another extension registered over a wrapper passes the request on without retries, as
-// long as that provider passes the options on, as they are or copied by spread, instead
-// of building them from named fields.
-const NESTED: unique symbol = Symbol.for('review-pi_dev.retry.nested')
 interface Wrapper extends Provider {
   [ORIGINAL]: Provider
 }
