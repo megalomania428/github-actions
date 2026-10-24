@@ -11,13 +11,13 @@
 
 - clone me:
 
-```bash
-git clone --recursive git@github.com:megalomania428/github-actions.git github-actions
-```
+  ```bash
+  git clone --recursive git@github.com:megalomania428/github-actions.git github-actions
+  ```
 
 - make tag and send to release:
 
-```bash
-git checkout master && git pull
-git tag -fm $(git branch --sho) v1.0.2 && git push --force origin $(git describe)
-```
+  ```bash
+  git checkout master && git pull
+  git tag -fm $(git branch --sho) v1.0.3 && git push --force origin $(git describe)
+  ```
