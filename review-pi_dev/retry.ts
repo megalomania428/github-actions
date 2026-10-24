@@ -168,6 +168,38 @@ function checkPiRetries (value: unknown): void {
 function originalOf (provider: Provider | undefined): Provider | undefined {
   return (provider as Partial<Wrapper> | undefined)?.[ORIGINAL]
 }
+// The provider with its streams replaced. The wrapper copies no fields of the original
+// but reads and writes them there, those of its prototypes included, so the methods,
+// accessors and private fields of a provider implemented by a class keep working and
+// later changes of its fields reach the wrapper. Its methods run with the original as
+// this, and every field is enumerable, so a copy of the wrapper made by spread has them.
+function wrapperOf (original: Provider,
+  streams: Pick<Provider, 'stream' | 'streamSimple'>): Wrapper {
+  const wrapper = { ...streams }
+  // A copy of the wrapper made by another extension must not lead past its streams.
+  Object.defineProperty(wrapper, ORIGINAL, { value: original })
+  const fields = original as unknown as Record<PropertyKey, unknown>
+  const methods = new WeakMap<object, unknown>()
+  let level: object | null = original
+  while (level !== null && level !== Object.prototype) {
+    for (const key of Reflect.ownKeys(level)) {
+      if (key === 'constructor' || Object.hasOwn(wrapper, key)) continue
+      Object.defineProperty(wrapper, key, {
+        configurable: true,
+        enumerable: true,
+        get: () => {
+          const value = fields[key]
+          if (typeof value !== 'function') return value
+          if (!methods.has(value)) methods.set(value, value.bind(original))
+          return methods.get(value)
+        },
+        set: (value: unknown) => { fields[key] = value }
+      })
+    }
+    level = Object.getPrototypeOf(level)
+  }
+  return wrapper as unknown as Wrapper
+}
 // Shared state of all requests of one load of the extension: the retry budget, the
 // wrappers it registered and the assistant events already handled by the extensions
 // loaded before this one, log.ts among them.
@@ -221,15 +253,12 @@ class Retries {
       if (native !== undefined && native === this.wrappers.get(id)) continue
       const original = originalOf(native) ?? registry.getProvider(id)
       if (original === undefined) continue
-      const wrapper = {
-        ...original,
+      const wrapper = wrapperOf(original, {
         stream: this.wrap((model, context, options) =>
           original.stream(model, context, options)),
         streamSimple: this.wrap((model, context, options) =>
           original.streamSimple(model, context, options))
-      }
-      // A copy of the wrapper made by another extension must not lead past its streams.
-      Object.defineProperty(wrapper, ORIGINAL, { value: original })
+      })
       this.wrappers.set(id, wrapper)
       this.pi.registerProvider(wrapper)
     }
