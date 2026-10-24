@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD013 -->
+
 # review-pi_dev
 
 In GitHub Actions, `review-pi_dev` refuses pull requests from forks, and any pull request whose origin cannot be checked, to keep fork code away from the review secrets. Pull requests from forks are reviewed from a workstation through chat apps instead.

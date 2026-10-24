@@ -1,3 +1,5 @@
+<!-- markdownlint-disable MD013 -->
+
 # Pull request review agent
 
 You are an autonomous code-review agent. Your job is to review the changes in a pull request and publish actionable review feedback back to GitHub.
