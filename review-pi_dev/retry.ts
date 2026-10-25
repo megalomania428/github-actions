@@ -1,16 +1,16 @@
-// Pi extension: retry every failed LLM request of the provider of the current model and
-// of the providers with configured auth, except cancellations and context overflows,
-// which pi handles itself. The "llmRetries" setting is the budget in seconds for the
-// sum of the delays between the attempts of one request, 111 by default, and 0 turns
-// the extension off. As in go-lib-ci, the delay starts at 1 second, grows by 1 second
-// every 3 retries up to 7 seconds, stays there for 3 more retries and starts over. A
-// wrapper is the provider pi built from its catalog, models.json and other extensions,
-// registered again as a native provider with only its streams replaced, so its auth,
-// OAuth, models and the streams of every api stay as they are. Events of an attempt
-// reach the agent live: only the first "start" is passed on and the error of a failed
-// attempt is not, so the next attempt replaces the partial message. Pi modules are
-// imported by name at runtime, so the linters need no pi packages and the types below
-// describe only the fields used here.
+// Pi extension: retry every failed LLM request sent through the model runtime of pi, for
+// every model of every provider, except cancellations and context overflows, which pi
+// handles itself. The "llmRetries" setting is the budget in seconds for the sum of the
+// delays between the attempts of one request, 111 by default, and 0 turns the extension
+// off. As in go-lib-ci, the delay starts at 1 second, grows by 1 second every 3 retries
+// up to 7 seconds, stays there for 3 more retries and starts over. The extension replaces
+// stream and streamSimple of the runtime instance, which the model registry keeps in a
+// field private to TypeScript only: the requests of the agent, compaction and branch
+// summary go there, and PI WEB, which ignores provider registrations after its start,
+// leaves these methods alone. Events of an attempt reach the agent live: only the first
+// "start" is passed on and the error of a failed attempt is not, so the next attempt
+// replaces the partial message. Pi modules are imported by name at runtime, so the
+// linters need no pi packages and the types below describe only the fields used here.
 // cspell:ignore earendil
 declare function setTimeout (handler: () => void, ms: number): unknown
 declare function clearTimeout (id: unknown): void
@@ -25,14 +25,8 @@ interface Model {
   provider: string
   contextWindow?: number
 }
-// A wrapper marks the options of its attempts, so a wrapper it reaches through a provider
-// another extension registered over a wrapper passes the request on without retries, as
-// long as that provider passes the options on, as they are or copied by spread, instead
-// of building them from named fields.
-const NESTED: unique symbol = Symbol.for('review-pi_dev.retry.nested')
 interface Options {
   signal?: Signal
-  [NESTED]?: boolean
 }
 interface Message {
   role: 'assistant'
@@ -58,19 +52,28 @@ interface Compat {
   createAssistantMessageEventStream: () => Stream
   isContextOverflow: (message: Message, contextWindow?: number) => boolean
 }
-interface Provider {
-  readonly id: string
+// The key is the same for every load of this module, so a load after /reload, or in
+// another session of PI WEB, which shares one runtime among its sessions, finds the
+// interception of an earlier load and joins it instead of intercepting again. Change
+// the version once the shape of the hook changes.
+const HOOK: unique symbol = Symbol.for('review-pi_dev.retry.runtime.v1')
+// A load of any version of this module that joined the interception.
+interface Load {
+  request: (base: StreamFunction, model: Model, context: unknown,
+    options: Options | undefined) => Stream
+}
+// Requests take the budget and pi.events of the last active load, and go to the methods
+// of the runtime without retries while no load is active.
+interface Hook {
+  readonly loads: Load[]
+}
+interface Runtime {
   stream: StreamFunction
   streamSimple: StreamFunction
-}
-interface Registry {
-  getAvailable: () => Model[]
-  getProvider: (id: string) => Provider | undefined
-  getRegisteredNativeProvider: (id: string) => Provider | undefined
+  [HOOK]?: Hook
 }
 interface Context {
-  model: Model | undefined
-  modelRegistry: Registry
+  modelRegistry: object
 }
 interface PiRetry {
   enabled?: unknown
@@ -84,8 +87,6 @@ interface UpdateEvent {
 }
 interface Api {
   on: <T>(name: string, handler: (event: T, ctx: Context) => void) => void
-  registerProvider: (provider: Provider) => void
-  unregisterProvider: (name: string) => void
   events: {
     emit: (channel: string, data: unknown) => void
   }
@@ -101,16 +102,6 @@ const INITIAL_DELAY = 1
 const DELAY_STEP = 1
 const STEP_RETRIES = 3
 const MAX_DELAY = 7
-// Events after which pi may send a request through a provider not wrapped yet: no event
-// tells about providers registered later, so the wrappers are checked before requests.
-const COVER_EVENTS = ['session_start', 'model_select', 'before_agent_start', 'turn_start',
-  'session_before_compact', 'session_before_tree']
-// The key is the same for every load of this module, so after /reload a wrapper left by
-// an earlier load still leads to the provider it wraps and is never wrapped again.
-const ORIGINAL: unique symbol = Symbol.for('review-pi_dev.retry.original')
-interface Wrapper extends Provider {
-  [ORIGINAL]: Provider
-}
 const ZERO_USAGE = {
   input: 0,
   output: 0,
@@ -164,51 +155,46 @@ function checkPiRetries (value: unknown): void {
       'retry.provider.maxRetries unset or not above 0 in settings.json')
   }
 }
-// The provider a wrapper of any load of this module wraps.
-function originalOf (provider: Provider | undefined): Provider | undefined {
-  return (provider as Partial<Wrapper> | undefined)?.[ORIGINAL]
-}
-// The provider with its streams replaced. The wrapper copies no fields of the original
-// but reads and writes them there, those of its prototypes included, so the methods,
-// accessors and private fields of a provider implemented by a class keep working and
-// later changes of its fields reach the wrapper. Its methods run with the original as
-// this, and every field is enumerable, so a copy of the wrapper made by spread has them.
-function wrapperOf (original: Provider,
-  streams: Pick<Provider, 'stream' | 'streamSimple'>): Wrapper {
-  const wrapper = { ...streams }
-  // A copy of the wrapper made by another extension must not lead past its streams.
-  Object.defineProperty(wrapper, ORIGINAL, { value: original })
-  const fields = original as unknown as Record<PropertyKey, unknown>
-  const methods = new WeakMap<object, unknown>()
-  let level: object | null = original
-  while (level !== null && level !== Object.prototype) {
-    for (const key of Reflect.ownKeys(level)) {
-      if (key === 'constructor' || Object.hasOwn(wrapper, key)) continue
-      Object.defineProperty(wrapper, key, {
-        configurable: true,
-        enumerable: true,
-        get: () => {
-          const value = fields[key]
-          if (typeof value !== 'function') return value
-          if (!methods.has(value)) methods.set(value, value.bind(original))
-          return methods.get(value)
-        },
-        set: (value: unknown) => { fields[key] = value }
-      })
-    }
-    level = Object.getPrototypeOf(level)
+// The runtime of the model registry, private to TypeScript only, so a release of pi may
+// drop or rename it.
+function runtimeOf (registry: object): Runtime {
+  const runtime = (registry as { runtime?: Partial<Runtime> }).runtime
+  if (typeof runtime?.stream !== 'function' ||
+    typeof runtime.streamSimple !== 'function') {
+    throw new Error('llmRetries found no runtime with stream and streamSimple in the ' +
+      'model registry of pi, so requests are not retried')
   }
-  return wrapper as unknown as Wrapper
+  return runtime as Runtime
 }
-// Shared state of all requests of one load of the extension: the retry budget, the
-// wrappers it registered and the assistant events already handled by the extensions
-// loaded before this one, log.ts among them.
-class Retries {
+// The hook of the runtime, intercepting its streams by the first load that asks for it.
+// The methods of the runtime run with the runtime as this.
+function hookOf (runtime: Runtime): Hook {
+  const existing = runtime[HOOK]
+  if (existing !== undefined) return existing
+  const hook: Hook = { loads: [] }
+  Object.defineProperty(runtime, HOOK, { value: hook })
+  for (const name of ['stream', 'streamSimple'] as const) {
+    const method = runtime[name]
+    const base: StreamFunction = (model, context, options) =>
+      method.call(runtime, model, context, options)
+    runtime[name] = (model, context, options) => {
+      const load = hook.loads.at(-1)
+      return load === undefined
+        ? base(model, context, options)
+        : load.request(base, model, context, options)
+    }
+  }
+  return hook
+}
+// Shared state of all requests of one load of the extension: the retry budget and the
+// assistant events already handled by the extensions loaded before this one, log.ts
+// among them.
+class Retries implements Load {
   readonly compat: Compat
   readonly budget: number
   private readonly pi: Api
   private active = true
-  private readonly wrappers = new Map<string, Provider>()
+  private loads: Load[] | undefined
   private readonly handled = new WeakSet<object>()
   private readonly waiters = new Map<object, () => void>()
   constructor (pi: Api, compat: Compat, budget: number) {
@@ -234,53 +220,35 @@ class Retries {
     this.waiters.delete(event)
   }
 
-  // The pi of an ended session is stale, so requests finishing later stay silent.
+  // The pi of an ended session is stale, so requests finishing later stay silent. A
+  // session that ended without session_shutdown leaves its requests to an earlier load.
   notify (data: object): void {
-    if (this.active) this.pi.events.emit('review:retry', data)
-  }
-
-  // Wrap the provider of the current model and every provider with configured auth,
-  // unless its native provider is a wrapper of this load already. Wrappers of other
-  // providers stay registered when the current model changes.
-  cover (ctx: Context): void {
     if (!this.active) return
-    const registry = ctx.modelRegistry
-    const ids = new Set(registry.getAvailable().map((model) => model.provider))
-    const current = ctx.model
-    if (current !== undefined) ids.add(current.provider)
-    for (const id of ids) {
-      const native = registry.getRegisteredNativeProvider(id)
-      if (native !== undefined && native === this.wrappers.get(id)) continue
-      const original = originalOf(native) ?? registry.getProvider(id)
-      if (original === undefined) continue
-      const wrapper = wrapperOf(original, {
-        stream: this.wrap((model, context, options) =>
-          original.stream(model, context, options)),
-        streamSimple: this.wrap((model, context, options) =>
-          original.streamSimple(model, context, options))
-      })
-      this.wrappers.set(id, wrapper)
-      this.pi.registerProvider(wrapper)
+    try {
+      this.pi.events.emit('review:retry', data)
+    } catch {
+      this.detach()
     }
   }
 
-  // Give the providers back when the session ends: after /reload the registry is the
-  // same, but the pi of this load is stale. A provider registered over a wrapper since
-  // belongs to another extension and stays.
-  release (ctx: Context): void {
+  // Join the interception of the runtime of the session as its last active load.
+  attach (ctx: Context): void {
+    if (!this.active || this.loads !== undefined) return
+    this.loads = hookOf(runtimeOf(ctx.modelRegistry)).loads
+    this.loads.push(this)
+  }
+
+  // Leave the interception when the session ends: after /reload the runtime is the same,
+  // but the pi of this load is stale.
+  detach (): void {
     this.active = false
-    for (const [id, wrapper] of this.wrappers) {
-      if (ctx.modelRegistry.getRegisteredNativeProvider(id) === wrapper) {
-        this.pi.unregisterProvider(id)
-      }
-    }
-    this.wrappers.clear()
+    const index = this.loads?.indexOf(this) ?? -1
+    if (index >= 0) this.loads?.splice(index, 1)
   }
 
-  wrap (base: StreamFunction): StreamFunction {
-    return (model, context, options) => options?.[NESTED] === true
-      ? base(model, context, options)
-      : new RetryingRequest(this, base, model, context, options).start()
+  request (base: StreamFunction, model: Model, context: unknown,
+    options: Options | undefined): Stream {
+    return new RetryingRequest(this, base, model, context, options).start()
   }
 }
 // One LLM request: its attempts reach the agent through a single stream.
@@ -347,8 +315,7 @@ class RetryingRequest {
   // partial message instead of adding another one.
   private async attempt (): Promise<Message | undefined> {
     try {
-      const options = { ...this.options, [NESTED]: true }
-      for await (const event of this.base(this.model, this.context, options)) {
+      for await (const event of this.base(this.model, this.context, this.options)) {
         if (event.type === 'error') return event.error ?? this.failure('no details')
         if (event.type === 'start') {
           if (this.started) continue
@@ -407,10 +374,8 @@ export function install (pi: Api, compat: Compat, settings: Settings): void {
   pi.on<UpdateEvent>('message_update', (event) => {
     retries.handle(event.assistantMessageEvent)
   })
-  for (const name of COVER_EVENTS) {
-    pi.on<unknown>(name, (_event, ctx) => { retries.cover(ctx) })
-  }
-  pi.on<unknown>('session_shutdown', (_event, ctx) => { retries.release(ctx) })
+  pi.on<unknown>('session_start', (_event, ctx) => { retries.attach(ctx) })
+  pi.on<unknown>('session_shutdown', () => { retries.detach() })
 }
 export default async function (pi: Api): Promise<void> {
   const compat = await import(COMPAT) as Compat
