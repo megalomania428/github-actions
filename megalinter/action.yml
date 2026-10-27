@@ -7,16 +7,8 @@ branding:
 runs:
   using: composite
   steps:
-    - name: Prepare shared MegaLinter configs
-      id: prepare
-      shell: bash
-      run: "${{ github.action_path }}/launch.sh prepare"
     - name: Run MegaLinter
-      uses: oxsecurity/megalinter@v9
-      env:
-        DEFAULT_WORKSPACE: ${{ github.workspace }}
-        MEGALINTER_CONFIG: ${{ steps.prepare.outputs.config }}
-    - name: Cleanup shared MegaLinter configs
-      if: always()
       shell: bash
-      run: "${{ github.action_path }}/launch.sh cleanup"
+      run: exec "${{ github.action_path }}/launch.sh"
+      env:
+        MEGALINTER_STEP_ENV: ${{ toJSON(env) }}

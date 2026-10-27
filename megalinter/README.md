@@ -1,6 +1,9 @@
+<!-- markdownlint-disable MD013 -->
+<!-- cspell:ignore gomodcache golangci tengri -->
+
 # MegaLinter action
 
-Composite action that runs [MegaLinter](https://megalinter.io) v9 with shared default configs from [configs](configs) and per-repo overrides.
+Composite action that runs [MegaLinter](https://megalinter.io) v9 in a podman container with shared default configs from [configs](configs) and per-repo overrides.
 
 ## Usage
 
@@ -14,9 +17,43 @@ Composite action that runs [MegaLinter](https://megalinter.io) v9 with shared de
 The action has no inputs, it reads environment variables of the step, the job or the workflow:
 
 - `OVERRIDE_DIR` – directory with per-repo config files relative to the repository root, `.megalinter` by default;
-- `MEGALINTER_CONFIG` – explicit MegaLinter config, the action passes it unchanged and skips its own config selection.
+- `MEGALINTER_CONFIG` – explicit MegaLinter config, the action passes it to MegaLinter, an absolute path inside the repository becomes its path under `/tmp/lint`, a file outside the repository, for example under `runner.temp`, is not available in the container, and skips its own config selection;
+- `MEGALINTER_IMAGE` – MegaLinter image, `ghcr.io/oxsecurity/megalinter:v9` by default;
+- `PODMAN_ARGS` – extra `podman run` arguments, split into words by whitespace without quote processing, for example `--tls-verify=false` or `--pull=always`;
+- `MEGALINTER_GOMODCACHE` – existing host directory mounted to `/go/pkg/mod`, for example the Go module cache from `go env GOMODCACHE` warmed up by `go mod download`;
+- `HTTP_PROXY`, `HTTPS_PROXY`, `SOCKS_PROXY`, `ALL_PROXY`, `NO_PROXY` in upper or lower case – proxies passed to the container, see [Container](#container).
 
 The former `override_dir` and `megalinter_image` inputs are removed. GitHub only warns about unknown inputs, so replace `with: override_dir: <dir>` by `env: OVERRIDE_DIR: <dir>`, otherwise the overrides are silently ignored.
+
+## Container
+
+The runner needs `podman`, GitHub-hosted Ubuntu runners have it preinstalled. The action runs `podman run --rm --network=host` with the container name `megalinter-<GITHUB_RUN_ID>-<GITHUB_RUN_ATTEMPT>`, then `PODMAN_ARGS` and the image. The exit code of MegaLinter becomes the exit code of the step, an error of podman itself such as a failed pull gives its own code from 125 to 127, a cancelled step exits with 1. podman pulls the image only when it is missing, add `--pull=always` to `PODMAN_ARGS` to refresh a moving tag such as `v9`.
+
+The repository is mounted to `/tmp/lint`, which is also the working directory, `DEFAULT_WORKSPACE` and `GITHUB_WORKSPACE` in the container. The files of `GITHUB_OUTPUT` and `GITHUB_STEP_SUMMARY` are mounted read-write under `/github/file_commands`, the file of `GITHUB_EVENT_PATH` is mounted read-only to `/github/workflow/event.json`, and the variables point to these paths. The Docker socket is not mounted. The container gets:
+
+- `GITHUB_ACTIONS=true` and `GITHUB_REPOSITORY`, `GITHUB_SHA`, `GITHUB_REF`, `GITHUB_HEAD_REF`, `GITHUB_REF_NAME`, `GITHUB_EVENT_NAME`, `GITHUB_RUN_ID`, `GITHUB_SERVER_URL`, `GITHUB_API_URL`, `GITHUB_WORKFLOW`, `GITHUB_JOB` from the runner;
+- `GITHUB_JOB_URL` and `GITHUB_TARGET_URL`, which the runner does not set, when they are set in the workflow, job or step `env`;
+- `MEGALINTER_CONFIG` selected by the action;
+- proxies normalized like in the review actions: each name is taken in either case, `HTTPS_PROXY` falls back to `HTTP_PROXY`, `ALL_PROXY` to `SOCKS_PROXY`, empty values are not passed;
+- every other variable of the workflow, job and step `env` and of `GITHUB_ENV`, like a Docker action gets them, except `PATH`, `HOME`, `HOSTNAME`, `PWD`, `RUNNER_*`, `ACTIONS_*` and the variables of the action itself, so `GITHUB_TOKEN` set there reaches the GitHub reporters, if the MegaLinter config enables them (the action default disables `GITHUB_STATUS_REPORTER` and `GITHUB_COMMENT_REPORTER`).
+
+Unlike a Docker action, values are passed as is: a host path in a variable other than `MEGALINTER_CONFIG` is not translated to the container. `CI`, `RUNNER_*` and other variables of the runner machine are not passed. The container and the installed configs are removed when the step ends, fails or is cancelled, only a step killed with `SIGKILL` leaves them behind.
+
+### Self-hosted runners
+
+Runners without Docker and without direct internet access take the image from an own registry and reach the network through proxies:
+
+```yaml
+- name: Run MegaLinter
+  env:
+    MEGALINTER_IMAGE: nexus01.in.tengri-data.ru/cont-ghcr/oxsecurity/megalinter:v9
+    PODMAN_ARGS: --tls-verify=false
+    HTTP_PROXY: ${{ secrets.PROXY_HTTP }}
+    SOCKS_PROXY: ${{ secrets.PROXY_SOCKS }}
+  uses: megalomania428/github-actions/megalinter@master
+```
+
+`HTTPS_PROXY` and `ALL_PROXY` are derived from `HTTP_PROXY` and `SOCKS_PROXY`. podman itself also pulls the image through `HTTP_PROXY` and `HTTPS_PROXY`, add the registry host to `NO_PROXY` when the proxy cannot reach it. When golangci-lint cannot download Go modules through the proxy, warm up the cache on the host with `go mod download` and pass its directory in `MEGALINTER_GOMODCACHE`.
 
 ## Config files
 
