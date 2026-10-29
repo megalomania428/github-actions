@@ -2,7 +2,7 @@
 set -euo pipefail
 # Install shared configs into the checked-out repository, run MegaLinter in a podman
 # container against it and always remove the container and the installed configs.
-# cspell:ignore abrt gomodcache
+# cspell:ignore abrt epochseconds gomodcache megalipase shlvl
 action_dir="${GITHUB_ACTION_PATH:-$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)}"
 workspace="${GITHUB_WORKSPACE:-${PWD}}"
 defaults_dir="${action_dir}/configs"
@@ -25,13 +25,19 @@ proxy_vars=(HTTP_PROXY http_proxy HTTPS_PROXY https_proxy SOCKS_PROXY socks_prox
 github_vars=(GITHUB_REPOSITORY GITHUB_SHA GITHUB_REF GITHUB_HEAD_REF GITHUB_REF_NAME
   GITHUB_EVENT_NAME GITHUB_RUN_ID GITHUB_SERVER_URL GITHUB_API_URL GITHUB_WORKFLOW
   GITHUB_JOB GITHUB_JOB_URL GITHUB_TARGET_URL)
-# Step env names that are passed explicitly or must not reach the container.
-skip_vars=(PATH HOME HOSTNAME PWD MEGALINTER_STEP_ENV MEGALINTER_IMAGE PODMAN_ARGS
-  MEGALINTER_GOMODCACHE MEGALINTER_CONFIG DEFAULT_WORKSPACE GITHUB_WORKSPACE
-  GITHUB_OUTPUT GITHUB_STEP_SUMMARY GITHUB_EVENT_PATH GITHUB_ACTIONS
+# Names the action always passes itself, ignored in MEGALIPASE.
+auto_vars=(DEFAULT_WORKSPACE GITHUB_WORKSPACE GITHUB_ACTIONS MEGALINTER_CONFIG
+  GITHUB_OUTPUT GITHUB_STEP_SUMMARY GITHUB_EVENT_PATH
   "${proxy_vars[@]}" "${github_vars[@]}")
-# A top-level key line of toJSON(env): values are strings, so keys start the line.
-env_key_re='^[[:space:],]*"([A-Za-z_][A-Za-z0-9_]*)":'
+# Variables bash sets itself, a shell of the step and launch.sh replace their
+# values, so MEGALIPASE cannot pass them.
+bash_vars=(BASH BASHOPTS BASHPID BASH_ALIASES BASH_ARGC BASH_ARGV BASH_ARGV0
+  BASH_CMDS BASH_COMMAND BASH_LINENO BASH_REMATCH BASH_SOURCE BASH_SUBSHELL
+  BASH_VERSINFO BASH_VERSION COMP_WORDBREAKS DIRSTACK EPOCHREALTIME EPOCHSECONDS
+  EUID FUNCNAME GROUPS HISTCMD IFS LINENO OPTERR OPTIND PIPESTATUS PPID PWD
+  RANDOM SECONDS SHELLOPTS SHLVL SRANDOM UID)
+# Variables named in MEGALIPASE, filled by check_pass_env.
+pass_vars=()
 # jscpd:ignore-start
 # Export a proxy variable only when it has a value, so an unset/empty proxy
 # never overwrites what podman would otherwise leave untouched in the container.
@@ -70,6 +76,50 @@ in_list() {
 }
 is_eslint_config() {
   [[ "$1" == eslint.config.* ]] || in_list "$1" "${eslint_legacy[@]}"
+}
+# Collect the variables named in MEGALIPASE into pass_vars and log every bad
+# name; a variable counts as set only when it is exported and not empty.
+check_pass_env() {
+  local name list rc=0
+  local -a names
+  local -A seen=()
+  # turn Unicode spaces like U+2003 into plain ones, also the non-breaking
+  # U+00A0, U+2007, U+202F and NEL U+0085 that the locale does not count as
+  # space; sed falls back to ASCII when the locale is missing
+  # shellcheck disable=SC2001
+  if ! list="$(LC_ALL=C.UTF-8 sed -e 's/[[:space:]]/ /g' \
+    -e $'s/\xc2\xa0/ /g; s/\xe2\x80\x87/ /g; s/\xe2\x80\xaf/ /g; s/\xc2\x85/ /g' \
+    <<<"${MEGALIPASE:-}")"; then
+    log 'MEGALIPASE: cannot split the list'
+    return 2
+  fi
+  # split on any whitespace, also on the CR of CRLF; read stops at the end of
+  # the input with status 1
+  local IFS=$' \t\n\r\v\f'
+  read -r -d '' -a names <<<"${list}" || true
+  for name in "${names[@]}"; do
+    if [[ ! "${name}" =~ ^[A-Za-z_][A-Za-z0-9_]*$ ]]; then
+      log "MEGALIPASE: invalid variable name ${name}"
+      rc=2
+      continue
+    fi
+    if [[ -n "${seen[${name}]:-}" ]] || in_list "${name}" "${auto_vars[@]}"; then
+      continue
+    fi
+    seen["${name}"]=1
+    if in_list "${name}" "${bash_vars[@]}"; then
+      log "MEGALIPASE: ${name} is set by bash and cannot be passed"
+      rc=2
+      continue
+    fi
+    if [[ -z "${!name:-}" || "${!name@a}" != *x* ]]; then
+      log "MEGALIPASE: ${name} is not set or empty"
+      rc=2
+      continue
+    fi
+    pass_vars+=("${name}")
+  done
+  return "${rc}"
 }
 prepare() {
   local name src dst default_src override_src config='' override_path
@@ -223,10 +273,10 @@ file_command() {
   args+=(-v "${path}:${target}${mode}" -e "${name}=${target}")
 }
 run_megalinter() {
-  local name line rc=0
+  local name rc=0
   local -a args extra
-  args=(run --rm --network=host "--name=${container}" -v "${workspace}:${lint_dir}"
-    -w "${lint_dir}" -e "DEFAULT_WORKSPACE=${lint_dir}"
+  args=(run --rm --network=host --http-proxy=false "--name=${container}"
+    -v "${workspace}:${lint_dir}" -w "${lint_dir}" -e "DEFAULT_WORKSPACE=${lint_dir}"
     -e "GITHUB_WORKSPACE=${lint_dir}" -e GITHUB_ACTIONS=true -e MEGALINTER_CONFIG)
   for name in "${github_vars[@]}" "${proxy_vars[@]}"; do
     args+=(-e "${name}")
@@ -238,16 +288,10 @@ run_megalinter() {
   if [[ -n "${MEGALINTER_GOMODCACHE:-}" ]]; then
     args+=(-v "${MEGALINTER_GOMODCACHE}:/go/pkg/mod")
   fi
-  # the workflow, job and step env, as a docker action receives it
-  while IFS= read -r line; do
-    if [[ "${line}" =~ ${env_key_re} ]]; then
-      name="${BASH_REMATCH[1]}"
-      case "${name}" in
-      RUNNER_* | ACTIONS_*) continue ;;
-      esac
-      in_list "${name}" "${skip_vars[@]}" || args+=(-e "${name}")
-    fi
-  done <<<"${MEGALINTER_STEP_ENV:-}"
+  # only the variables named in MEGALIPASE, podman takes the values from its env
+  for name in "${pass_vars[@]}"; do
+    args+=(-e "${name}")
+  done
   # split into words on any whitespace like check-dir.sh does, but without globbing;
   # read stops at the end of the input with status 1
   read -r -d '' -a extra <<<"${PODMAN_ARGS:-}" || true
@@ -260,6 +304,8 @@ run_megalinter() {
   pid=''
   return "${rc}"
 }
+# A bad MEGALIPASE fails the step before any config is installed or container run.
+check_pass_env || exit 2
 # Always remove the container and the installed configs; a signal exits through
 # the EXIT trap, so the cleanup runs once and the rest of the script is skipped.
 trap cleanup EXIT

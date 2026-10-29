@@ -24,6 +24,8 @@ jobs:
           fetch-depth: 0
           submodules: recursive
           persist-credentials: false
+      - name: test launch scripts
+        run: megalinter/launch.test.sh
   linters:
     name: linters
     timeout-minutes: 11

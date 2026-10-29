@@ -10,5 +10,3 @@ runs:
     - name: Run MegaLinter
       shell: bash
       run: exec "${{ github.action_path }}/launch.sh"
-      env:
-        MEGALINTER_STEP_ENV: ${{ toJSON(env) }}
