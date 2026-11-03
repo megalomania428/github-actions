@@ -4,8 +4,8 @@
   "ignore": [
     "**/*_test.go",
     "**/*.test.ts",
-    "megalinter/configs/*",
-    ".megalinter/configs/*",
+    "megalinter/**",
+    ".megalinter/**",
     "review-pi_dev/main.md"
   ]
 }
