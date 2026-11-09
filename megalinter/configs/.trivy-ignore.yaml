@@ -6,4 +6,7 @@ vulnerabilities:
       golang.org/x/crypto/openpgp is deprecated by design with no fixed
       version available; the package is not imported anywhere in this
       repository (transitive indirect dependency only).
-misconfigurations: []
+misconfigurations:
+  - id: AVD-DS-0001
+  - id: AVD-DS-0002
+  - id: AVD-DS-0026
