@@ -19,5 +19,5 @@
 
   ```bash
   git checkout master && git pull
-  git tag -fm $(git branch --sho) v1.0.3 && git push --force origin $(git describe)
+  git tag -fm $(git branch --sho) v1.0.4 && git push --force origin $(git describe)
   ```
