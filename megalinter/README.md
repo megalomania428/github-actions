@@ -1,5 +1,5 @@
 <!-- markdownlint-disable MD013 -->
-<!-- cspell:ignore gomodcache golangci megalipase shlvl tengri -->
+<!-- cspell:ignore gomodcache golangci inputrc megalipase psqlrc shlvl tengri -->
 
 # MegaLinter action
 
@@ -89,7 +89,7 @@ Subdirectories of `OVERRIDE_DIR` are skipped with a log message, symlinks to fil
 
 ESLint 10 uses the first config found in a directory in the order `eslint.config.js`, `.mjs`, `.cjs`, `.ts`, `.mts`, `.cts`, so a default `eslint.config.mjs` next to a repo `eslint.config.ts` would silently replace the repo rules. Therefore:
 
-- if the repository root contains any `eslint.config.*` or a legacy `.eslintrc`, `.eslintrc.json`, `.eslintrc.yml`, `.eslintrc.yaml`, `.eslintrc.js`, `.eslintrc.cjs`, no `eslint.config.*` is installed at all, neither the default nor from `OVERRIDE_DIR`;
+- if the repository root contains any `eslint.config.*` or a legacy `.eslintrc`, `.eslintrc.json`, `.eslintrc.yml`, `.eslintrc.yaml`, `.eslintrc.js`, `.eslintrc.cjs`, no `eslint.config.*` is installed at all, neither the default nor from `OVERRIDE_DIR`, only `eslint.config-action.mjs`, which the repo config can import;
 - if `OVERRIDE_DIR` contains any of these files, they are installed and the default `eslint.config.*` is skipped.
 
 Legacy configs are taken into account so that MegaLinter reports the migration error to flat config instead of linting with the action rules.
@@ -123,3 +123,46 @@ Why the extension is explicit:
 - automatic wrapping into `EXTENDS: [.megalinter-action.yml, <repo config>]` was rejected: MegaLinter merges an extended config that has its own `EXTENDS` twice, the second time under its own `CONFIG_PROPERTIES_TO_APPEND`, so repos with `EXTENDS` would lose or duplicate list values;
 - extension by URL only was rejected, because the URL ref drifts away from the action ref in `uses:`;
 - the explicit `MEGALINTER_CONFIG` also removes the name collision when the repo has `.mega-linter.yml` and the action default lies next to it.
+
+## Extendable configs
+
+Configs of tools that can include another config come in pairs: the action default under a name with `-action` and a default under the usual name that only includes it:
+
+- [.cspell-action.json](configs/.cspell-action.json) and [.cspell.json](configs/.cspell.json) with `"import": [".cspell-action.json"]`;
+- [.markdownlint-action.json](configs/.markdownlint-action.json) and [.markdownlint.json](configs/.markdownlint.json) with `"extends": ".markdownlint-action.json"`;
+- [.ruff-action.toml](configs/.ruff-action.toml) and [.ruff.toml](configs/.ruff.toml) with `extend = ".ruff-action.toml"`;
+- [.yamllint-action.yml](configs/.yamllint-action.yml) and [.yamllint.yml](configs/.yamllint.yml) with `extends: ./.yamllint-action.yml`;
+- [tsconfig.eslint-action.json](configs/tsconfig.eslint-action.json) and [tsconfig.eslint.json](configs/tsconfig.eslint.json) with `"extends": "./tsconfig.eslint-action.json"`;
+- [eslint.config-action.mjs](configs/eslint.config-action.mjs) and [eslint.config.mjs](configs/eslint.config.mjs), which exports the imported config as is.
+
+Both files of a pair are installed by the rules above, so a file with `-action` in the root or in `OVERRIDE_DIR` replaces the action default. A repo config under the usual name in the root or in `OVERRIDE_DIR` replaces the action settings completely unless it includes the file with `-action` explicitly, for example:
+
+```json
+{
+  "version": "0.2",
+  "import": [".cspell-action.json"],
+  "words": ["inputrc", "psqlrc"]
+}
+```
+
+<!-- prettier-ignore-start -->
+
+```js
+import action from './eslint.config-action.mjs'
+export default [...action, { rules: { 'no-console': 'error' } }]
+```
+
+<!-- prettier-ignore-end -->
+
+A config from `OVERRIDE_DIR` is copied to the root and the tools resolve these paths from the config file, yamllint from the working directory, which is the repository root in MegaLinter, so the lines are the same for a config in the root and in `OVERRIDE_DIR`. The repo values are merged into the action ones:
+
+- cspell adds lists such as `words`, `ignorePaths` or `dictionaries` to the action values, scalars such as `language` replace them;
+- markdownlint replaces the settings of a rule as a whole;
+- ruff applies `select` and `ignore` of the repo after the action ones, so `ignore` adds rules to the ignored ones, other settings replace the action values;
+- yamllint replaces the given options of a rule and keeps the others, `disable` turns the rule off;
+- TypeScript merges `compilerOptions` option by option, `include`, `exclude` and `files` replace the action values;
+- the ESLint config is a module, the repo config composes the imported array as it needs.
+
+Files with `-action` are installed also next to repo configs that do not include them and are linted like the other installed configs. `eslint.config-action.mjs` is installed even when the repository has its own ESLint config, see [ESLint configs](#eslint-configs), because its name does not match `eslint.config.*`. The `description` of the action cspell default contains `cspell:disable`, so a repo `.cspell.json` without the import does not report the words listed in `.cspell-action.json`.
+
+A config that includes a file with `-action` works only through this action, a local run needs the file copied manually. The extra dictionaries of the action cspell default are paths under `/node-cspell`, which `SPELL_CSPELL_PRE_COMMANDS` of `.megalinter-action.yml` installs, so a repo MegaLinter config has to extend it, otherwise cspell reports a `Dictionary Error` for each of them.
